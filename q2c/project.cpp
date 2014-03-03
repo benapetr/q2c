@@ -8,10 +8,8 @@
 //MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //GNU General Public License for more details.
 
-#include "configuration.h"
+#include "project.h"
 
-int Configuration::Verbosity = 1;
-QString Configuration::InputFile = "";
-QString Configuration::OutputFile = "";
-bool Configuration::q2c = true;
-
+Project::Project()
+{
+}

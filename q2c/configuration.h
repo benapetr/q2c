@@ -11,11 +11,15 @@
 #ifndef CONFIGURATION_H
 #define CONFIGURATION_H
 
+#include <QString>
+
 class Configuration
 {
     public:
         static int Verbosity;
-        Configuration();
+        static QString InputFile;
+        static QString OutputFile;
+        static bool q2c;
 };
 
 #endif // CONFIGURATION_H
