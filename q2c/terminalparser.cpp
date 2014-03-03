@@ -66,6 +66,9 @@ bool TerminalParser::ParseChar(QChar x)
         case 'h':
             this->DisplayHelp();
             return true;
+        case 'f':
+            Configuration::Forcing = true;
+            return false;
     }
     return false;
 }

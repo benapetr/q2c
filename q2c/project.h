@@ -11,10 +11,21 @@
 #ifndef PROJECT_H
 #define PROJECT_H
 
+#include <QString>
+#include <QDateTime>
+#include "logs.h"
+
 class Project
 {
     public:
         Project();
+        bool Load(QString text);
+        QString ToQmake();
+        QString ToCmake();
+        QString ProjectName;
+    private:
+        static QString QT_Target;
+        static QString FinishCut(QString text);
 };
 
 #endif // PROJECT_H

@@ -61,6 +61,7 @@ int main(int argc, char *argv[])
         // Parameter require to exit (--help) etc
         return 0;
     }
+    Logs::DebugLog("Verbosity: " + QString::number(Configuration::Verbosity));
     if (Configuration::InputFile == "")
     {
         // user didn't provide any input file
@@ -82,7 +83,7 @@ int main(int argc, char *argv[])
         Configuration::OutputFile = Configuration::InputFile.mid(0, Configuration::InputFile.indexOf("."));
         if (Configuration::q2c)
         {
-            Configuration::OutputFile += ".cmake";
+            Configuration::OutputFile = "CMakeLists.txt";
         } else
         {
             Configuration::OutputFile += ".pro";
@@ -90,8 +91,42 @@ int main(int argc, char *argv[])
         Logs::DebugLog("Resolved output name to " + Configuration::OutputFile);
     }
     // Load the project file
+    QFile *file = new QFile(Configuration::InputFile);
+    if (!file->open(QIODevice::ReadOnly))
+    {
+        Logs::ErrorLog("Unable to read: " + Configuration::InputFile);
+        delete file;
+        return 4;
+    }
+    QString source = QString(file->readAll());
+    delete file;
     Project *input = new Project();
-
+    if (!input->Load(source))
+    {
+        Logs::ErrorLog("Unable to parse: " + Configuration::InputFile);
+        return 5;
+    }
+    file = new QFile(Configuration::OutputFile);
+    if ((!Configuration::Forcing) && file->exists())
+    {
+        Logs::ErrorLog("File " + Configuration::OutputFile + " already exist! I will not overwrite it unless you provide parameter -f for it");
+        delete file;
+        return 6;
+    }
+    if (!file->open(QIODevice::ReadWrite))
+    {
+        Logs::ErrorLog("Unable to open for writing: " + Configuration::OutputFile);
+        delete file;
+        return 7;
+    }
+    if (Configuration::q2c)
+    {
+        file->write(input->ToCmake().toUtf8());
+    } else
+    {
+        file->write(input->ToQmake().toUtf8());
+    }
+    delete file;
     delete input;
     return 0;
 }

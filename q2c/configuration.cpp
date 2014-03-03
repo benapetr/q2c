@@ -10,8 +10,9 @@
 
 #include "configuration.h"
 
-int Configuration::Verbosity = 1;
+int Configuration::Verbosity = 0;
 QString Configuration::InputFile = "";
 QString Configuration::OutputFile = "";
+bool Configuration::Forcing = false;
 bool Configuration::q2c = true;
 

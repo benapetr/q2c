@@ -12,7 +12,7 @@ void Logs::ErrorLog(QString text)
 
 void Logs::DebugLog(QString text, int verbosity)
 {
-    if (verbosity >= Configuration::Verbosity)
+    if (verbosity <= Configuration::Verbosity)
     {
         Log(text);
     }

@@ -10,6 +10,61 @@
 
 #include "project.h"
 
+QString Project::QT_Target = "TARGET =";
+
 Project::Project()
 {
+    ProjectName = "";
+}
+
+bool Project::Load(QString text)
+{
+    if (!text.contains(QT_Target))
+    {
+        Logs::ErrorLog("Required TARGET not found");
+        return false;
+    }
+    QString target = text.mid(text.indexOf(QT_Target) + QT_Target.length());
+    // remove all leading space
+    while (target.startsWith(" "))
+    {
+        target = target.mid(1);
+    }
+    target = FinishCut(target);
+    ProjectName = target;
+    return true;
+}
+
+QString Project::ToQmake()
+{
+    QString source = "#-------------------------------------------------\n";
+    source += "# Project converted from cmake file using q2c\n";
+    source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
+    source += "#-------------------------------------------------\n";
+    source += "TARGET = " + ProjectName;
+    return source;
+}
+
+QString Project::ToCmake()
+{
+    QString source = "#-------------------------------------------------\n";
+    source += "# Project converted from qmake file using q2c\n";
+    source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
+    source += "#-------------------------------------------------\n";
+    source += "cmake_minimum_required (VERSION 2.6)\n";
+    source += "project(" + ProjectName + ")\n";
+    return source;
+}
+
+QString Project::FinishCut(QString text)
+{
+    if (text.contains("\n"))
+    {
+        text = text.mid(0, text.indexOf("\n"));
+    }
+    if (text.contains(" "))
+    {
+        text = text.mid(0, text.indexOf(" "));
+    }
+    return text;
 }
