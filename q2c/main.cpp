@@ -13,6 +13,7 @@
 #include <QDir>
 #include "configuration.h"
 #include "project.h"
+#include "logs.h"
 #include "terminalparser.h"
 
 using namespace std;
@@ -33,8 +34,8 @@ bool DetectInput()
             if (found)
             {
                 // more pro files exist, let's print error and quit
-                cerr << "There are multiple .pro files in this directory, you need to explicitly provide" << endl;
-                cerr << "the project you want to convert, see --help for more" << endl;
+                Logs::ErrorLog("There are multiple .pro files in this directory, you need to explicitly provide");
+                Logs::ErrorLog("the project you want to convert, see --help for more");
                 return false;
             }
             found = true;
@@ -67,6 +68,7 @@ int main(int argc, char *argv[])
         {
             return 2;
         }
+        Logs::DebugLog("Resolved input name to " + Configuration::InputFile);
     }
     if (Configuration::OutputFile == "")
     {
@@ -74,7 +76,7 @@ int main(int argc, char *argv[])
         // we can simply reuse the original name
         if (!Configuration::InputFile.contains("."))
         {
-            cerr << "The input file can't be converted to output file, please provide output file name" << endl;
+            Logs::ErrorLog("The input file can't be converted to output file, please provide output file name");
             return 3;
         }
         Configuration::OutputFile = Configuration::InputFile.mid(0, Configuration::InputFile.indexOf("."));
@@ -85,6 +87,7 @@ int main(int argc, char *argv[])
         {
             Configuration::OutputFile += ".pro";
         }
+        Logs::DebugLog("Resolved output name to " + Configuration::OutputFile);
     }
     // Load the project file
     Project *input = new Project();

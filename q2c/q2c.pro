@@ -18,9 +18,11 @@ TEMPLATE = app
 SOURCES += main.cpp \
     terminalparser.cpp \
     configuration.cpp \
-    project.cpp
+    project.cpp \
+    logs.cpp
 
 HEADERS += \
     terminalparser.h \
     configuration.h \
-    project.h
+    project.h \
+    logs.h
