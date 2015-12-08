@@ -1,6 +1,8 @@
 q2c
 ===
 
+'''IMPORTANT:''' q2c was never finished nor released. It's a work in progress and most likely not useable in production. Your contributions are welcome.
+
 qmake &lt;-> cmake convertor tool
 
 
