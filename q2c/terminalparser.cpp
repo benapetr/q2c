@@ -83,9 +83,9 @@ void TerminalParser::DisplayHelp()
     cout << "By default q2c checks the current folder for any qmake (.pro) file," << endl;
     cout << "it fails if it find 0 or more files" << endl << endl;
     cout << "Parameters:" << endl;
-    cout << "  -v: Increases verbosity" << endl;
-    cout << "  -o|--out <file>: define a name of output file" << endl;
-    cout << "  -i|--in <file>: define a name of input file" << endl;
-    cout << "  -h | --help: Display this help" << endl<< endl;
+    cout << "  -v:              Increases verbosity" << endl;
+    cout << "  -o|--out <file>: Defines a name of output file" << endl;
+    cout << "  -i|--in <file>:  Defines a name of input file" << endl;
+    cout << "  -h|--help:       Display this help" << endl<< endl;
     cout << "q2c is an open source, contribute at https://github.com/benapetr/q2c" << endl;
 }
