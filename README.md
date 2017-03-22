@@ -16,7 +16,7 @@ in terminal.
 How to compile
 ===============
 
-Enter the folder with source code and type `make`
+Enter the folder with source code and type `qmake`
 
 
 How to install
