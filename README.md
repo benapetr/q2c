@@ -16,12 +16,11 @@ in terminal.
 How to compile
 ===============
 
-Enter the folder with source code and type `qmake`
-
-
-How to install
-===============
-    sudo make install
+Enter the folder with source code
+```
+qmake
+make
+```
 
 How to use
 ===========
