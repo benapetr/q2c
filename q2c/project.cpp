@@ -17,6 +17,16 @@ Project::Project()
     ProjectName = "";
 }
 
+QString generateCMakeOptions(QList<CMakeOption> *options)
+{
+    QString result;
+    foreach (CMakeOption option, *options)
+    {
+        result += "option(" + option.Name + " \"" + option.Description + "\" " + option.Default + ")\n";
+    }
+    return result;
+}
+
 bool Project::Load(QString text)
 {
     if (!text.contains(QT_Target))
@@ -53,6 +63,8 @@ QString Project::ToCmake()
     source += "#-------------------------------------------------\n";
     source += "cmake_minimum_required (VERSION 2.6)\n";
     source += "project(" + ProjectName + ")\n";
+    //! \todo Somewhere here we should generate options for CMake based on Qt version preference
+    source += generateCMakeOptions(&this->CMakeOptions);
     return source;
 }
 
