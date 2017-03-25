@@ -59,8 +59,10 @@ int main(int argc, char *argv[])
     if (tp->Parse())
     {
         // Parameter require to exit (--help) etc
+        delete tp;
         return 0;
     }
+    delete tp;
     Logs::DebugLog("Verbosity: " + QString::number(Configuration::Verbosity));
     if (Configuration::InputFile == "")
     {
