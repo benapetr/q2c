@@ -52,6 +52,7 @@ class Project
         QString ProjectName;
     private:
         static QString FinishCut(QString text);
+        bool ParseStandardQMakeList(QList<QString> *list, QString line, QString text);
         bool ProcessSimpleKeyword(QString word, QString line);
         bool ProcessComplexKeyword(QString word, QString line, QString data_buffer);
         QList<QString> KnownSimpleKeywords;

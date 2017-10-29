@@ -102,24 +102,50 @@ bool Project::ParseQmake(QString text)
 
 QString Project::ToQmake()
 {
-    QString source = "#-------------------------------------------------\n";
+    QString source = "#-----------------------------------------------------------------\n";
     source += "# Project converted from cmake file using q2c\n";
     source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
-    source += "#-------------------------------------------------\n";
+    source += "#-----------------------------------------------------------------\n";
     source += "TARGET = " + ProjectName;
     return source;
 }
 
 QString Project::ToCmake()
 {
-    QString source = "#-------------------------------------------------\n";
+    QString source = "#-----------------------------------------------------------------\n";
     source += "# Project converted from qmake file using q2c\n";
     source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
-    source += "#-------------------------------------------------\n";
+    source += "#-----------------------------------------------------------------\n";
     source += "cmake_minimum_required (VERSION 2.6)\n";
     source += "project(" + ProjectName + ")\n";
     //! \todo Somewhere here we should generate options for CMake based on Qt version preference
     source += generateCMakeOptions(&this->CMakeOptions);
+
+    // Sources, headers and so on
+    if (!this->Sources.isEmpty())
+    {
+        source += "set(" + this->ProjectName + "_SOURCES";
+        foreach (QString src, this->Sources)
+        {
+            source += " \"" + src + "\"";
+        }
+        source += ")\n";
+    }
+    if (!this->Headers.isEmpty())
+    {
+        source += "set(" + this->ProjectName + "_HEADERS";
+        foreach (QString src, this->Headers)
+        {
+            source += " \"" + src + "\"";
+        }
+        source += ")\n";
+    }
+    source += "add_executable(" + this->ProjectName;
+    if (!this->Sources.isEmpty())
+        source += " ${" + this->ProjectName + "_SOURCES}";
+    if (!this->Headers.isEmpty())
+        source += " ${" + this->ProjectName + "_HEADERS}";
+    source += ")\n";
     return source;
 }
 
@@ -134,6 +160,25 @@ QString Project::FinishCut(QString text)
         text = text.mid(0, text.indexOf(" "));
     }
     return text;
+}
+
+bool Project::ParseStandardQMakeList(QList<QString> *list, QString line, QString text)
+{
+    if (!line.contains("="))
+    {
+        Logs::ErrorLog("Syntax error: expected '=' or '+=', neither of these 2 found");
+        Logs::ErrorLog("Line: " + line);
+        return false;
+    }
+    if (!line.contains("+="))
+    {
+        // Wipe current buffer
+        list->clear();
+    }
+    text = text.mid(text.indexOf("=") + 1);
+    text = text.replace("\n", " ");
+    text = text.replace("\\", " ");
+    list->append(text.split(" ", QString::SkipEmptyParts));
 }
 
 bool Project::ProcessSimpleKeyword(QString word, QString line)
@@ -155,6 +200,7 @@ bool Project::ProcessSimpleKeyword(QString word, QString line)
         target_name.replace("\"", "");
         // Project name should not end with spaces either
         target_name = target_name.trimmed();
+        target_name = target_name.replace(" ", "_");
         this->ProjectName = target_name;
     }
     return true;
@@ -166,38 +212,12 @@ bool Project::ProcessComplexKeyword(QString word, QString line, QString data_buf
         this->RemainingRequiredKeywords.removeAll(word);
     if (word == "SOURCES")
     {
-        if (!line.contains("="))
-        {
-            Logs::ErrorLog("Syntax error: expected '=' or '+=', neither of these 2 found");
-            Logs::ErrorLog("Line: " + line);
+        if (!this->ParseStandardQMakeList(&this->Sources, line, data_buffer))
             return false;
-        }
-        if (!line.contains("+="))
-        {
-            // Wipe current buffer
-            this->Sources.clear();
-        }
-        data_buffer = data_buffer.mid(data_buffer.indexOf("=") + 1);
-        data_buffer = data_buffer.replace("\n", " ");
-        data_buffer = data_buffer.replace("\\", " ");
-        this->Sources << data_buffer.split(" ", QString::SkipEmptyParts);
     } else if (word == "HEADERS")
     {
-        if (!line.contains("="))
-        {
-            Logs::ErrorLog("Syntax error: expected '=' or '+=', neither of these 2 found");
-            Logs::ErrorLog("Line: " + line);
+        if (!this->ParseStandardQMakeList(&this->Headers, line, data_buffer))
             return false;
-        }
-        if (!line.contains("+="))
-        {
-            // Wipe current buffer
-            this->Headers.clear();
-        }
-        data_buffer = data_buffer.mid(data_buffer.indexOf("=") + 1);
-        data_buffer = data_buffer.replace("\n", " ");
-        data_buffer = data_buffer.replace("\\", " ");
-        this->Headers << data_buffer.split(" ", QString::SkipEmptyParts);
     }
     return true;
 }
