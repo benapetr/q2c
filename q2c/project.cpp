@@ -18,6 +18,14 @@ Project::Project()
     this->KnownSimpleKeywords << "TARGET";
     this->RequiredKeywords << "TARGET";
     this->KnownComplexKeywords << "SOURCES" << "HEADERS";
+    this->Version = QtVersion_All;
+    if (Configuration::only_qt4)
+    {
+        this->Version = QtVersion_Qt4;
+    } else if (Configuration::only_qt5)
+    {
+        this->Version = QtVersion_Qt5;
+    }
     this->RemainingRequiredKeywords = this->RequiredKeywords;
 }
 
@@ -113,6 +121,11 @@ QString Project::ToQmake()
 
 QString Project::ToCmake()
 {
+    if (this->Version == QtVersion_All)
+    {
+        this->CMakeOptions.append(CMakeOption("QT5BUILD", "Build using Qt5 libs", "TRUE"));
+    }
+
     QString source = "#-----------------------------------------------------------------\n";
     source += "# Project converted from qmake file using q2c\n";
     source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
@@ -221,4 +234,16 @@ bool Project::ProcessComplexKeyword(QString word, QString line, QString data_buf
             return false;
     }
     return true;
+}
+
+QString Project::GetCMakeDefaultQtLibs()
+{
+
+}
+
+CMakeOption::CMakeOption(QString name, QString description, QString __default)
+{
+    this->Name = name;
+    this->Description = description;
+    this->Default = __default;
 }

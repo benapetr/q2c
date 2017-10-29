@@ -19,6 +19,7 @@
 class CMakeOption
 {
     public:
+        CMakeOption(QString name, QString description, QString __default);
         QString Name;
         QString Description;
         QString Default;
@@ -56,6 +57,7 @@ class Project
         bool ParseStandardQMakeList(QList<QString> *list, QString line, QString text);
         bool ProcessSimpleKeyword(QString word, QString line);
         bool ProcessComplexKeyword(QString word, QString line, QString data_buffer);
+        QString GetCMakeDefaultQtLibs();
         QList<QString> KnownSimpleKeywords;
         QList<QString> KnownComplexKeywords;
         //! Keywords that must be in source document

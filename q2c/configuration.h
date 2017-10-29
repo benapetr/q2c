@@ -19,6 +19,8 @@ class Configuration
         static int Verbosity;
         static QString InputFile;
         static QString OutputFile;
+        static bool only_qt4;
+        static bool only_qt5;
         static bool Forcing;
         static bool q2c;
 };

@@ -15,4 +15,6 @@ QString Configuration::InputFile = "";
 QString Configuration::OutputFile = "";
 bool Configuration::Forcing = false;
 bool Configuration::q2c = true;
+bool Configuration::only_qt4 = false;
+bool Configuration::only_qt5 = false;
 

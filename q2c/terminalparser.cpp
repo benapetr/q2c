@@ -69,6 +69,12 @@ bool TerminalParser::ParseChar(QChar x)
         case 'f':
             Configuration::Forcing = true;
             return false;
+        case '4':
+            Configuration::only_qt4 = true;
+            return false;
+        case '5':
+            Configuration::only_qt5 = true;
+            return false;
     }
     return false;
 }
@@ -86,6 +92,8 @@ void TerminalParser::DisplayHelp()
     cout << "  -v:              Increases verbosity" << endl;
     cout << "  -o|--out <file>: Defines a name of output file" << endl;
     cout << "  -i|--in <file>:  Defines a name of input file" << endl;
-    cout << "  -h|--help:       Display this help" << endl<< endl;
+    cout << "  -h|--help:       Display this help" << endl;
+    cout << "  -4|--qt4:        Set qt4 as only supported version" << endl;
+    cout << "  -5|--qt5:        Set qt5 as only supported version" << endl << endl;
     cout << "q2c is an open source, contribute at https://github.com/benapetr/q2c" << endl;
 }
