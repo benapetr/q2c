@@ -19,10 +19,12 @@ SOURCES += main.cpp \
     terminalparser.cpp \
     configuration.cpp \
     project.cpp \
-    logs.cpp
+    logs.cpp \
+    generic.cpp
 
 HEADERS += \
     terminalparser.h \
     configuration.h \
     project.h \
-    logs.h
+    logs.h \
+    generic.h

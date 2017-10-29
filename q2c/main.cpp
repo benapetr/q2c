@@ -46,8 +46,56 @@ bool DetectInput()
     return found;
 }
 
+int Parser_Input(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Configuration::InputFile = params.at(0);
+    return 0;
+}
+
+int Parser_Output(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Configuration::OutputFile = params.at(0);
+    return 0;
+}
+
+int Parser_Qt4(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(params);
+    Q_UNUSED(parser);
+    Configuration::only_qt4 = true;
+    return 0;
+}
+
+int Parser_Qt5(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(params);
+    Q_UNUSED(parser);
+    Configuration::only_qt5 = true;
+    return 0;
+}
+
+int Parser_Force(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(params);
+    Q_UNUSED(parser);
+    Configuration::Forcing = true;
+    return 0;
+}
+
+int Parser_Verbosity(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(params);
+    Q_UNUSED(parser);
+    Configuration::Verbosity++;
+    return 0;
+}
+
 int main(int argc, char *argv[])
 {
+    QCoreApplication::setApplicationName("q2c");
+
     int c = 0;
     QStringList args;
     while (c < argc)
@@ -55,8 +103,14 @@ int main(int argc, char *argv[])
         args.append(QString(argv[c]));
         c++;
     }
-    TerminalParser *tp = new TerminalParser(argc, args);
-    if (tp->Parse())
+    TerminalParser *tp = new TerminalParser();
+    tp->Register('v', "verbose", "Increases verbosity", 0, (TP_Callback)Parser_Verbosity);
+    tp->Register('o', "out", "Specify output file", 1, (TP_Callback)Parser_Output);
+    tp->Register('i', "in", "Specify input file", 1, (TP_Callback)Parser_Input);
+    tp->Register('4', "qt4", "Support only qt4", 0, (TP_Callback)Parser_Qt4);
+    tp->Register('5', "qt5", "Support only qt5", 0, (TP_Callback)Parser_Qt5);
+    tp->Register('f', "force", "Ignore any potential errors or dangers and overwrite all existing files", 0, (TP_Callback)Parser_Force);
+    if (!tp->Parse(argc, argv))
     {
         // Parameter require to exit (--help) etc
         delete tp;
