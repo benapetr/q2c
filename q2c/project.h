@@ -33,9 +33,16 @@ class Project
         QtVersion_All
     };
 
+    enum ParserState
+    {
+        ParserState_LookingForKeyword,
+        ParserState_FetchingData
+    };
+
     public:
         Project();
         bool Load(QString text);
+        bool ParseQmake(QString text);
         QString ToQmake();
         QString ToCmake();
         QList<CMakeOption> CMakeOptions;
@@ -44,8 +51,17 @@ class Project
         QtVersion Version;
         QString ProjectName;
     private:
-        static QString QT_Target;
         static QString FinishCut(QString text);
+        bool ProcessSimpleKeyword(QString word, QString line);
+        bool ProcessComplexKeyword(QString word, QString line, QString data_buffer);
+        QList<QString> KnownSimpleKeywords;
+        QList<QString> KnownComplexKeywords;
+        //! Keywords that must be in source document
+        QList<QString> RequiredKeywords;
+        QList<QString> RemainingRequiredKeywords;
+        QList<QString> Sources;
+        QList<QString> Headers;
+        QList<QString> UIList;
 };
 
 #endif // PROJECT_H

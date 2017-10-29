@@ -9,12 +9,15 @@
 //GNU General Public License for more details.
 
 #include "project.h"
-
-QString Project::QT_Target = "TARGET =";
+#include <QStringList>
 
 Project::Project()
 {
-    ProjectName = "";
+    this->ProjectName = "";
+    this->KnownSimpleKeywords << "TARGET";
+    this->RequiredKeywords << "TARGET";
+    this->KnownComplexKeywords << "SOURCES" << "HEADERS";
+    this->RemainingRequiredKeywords = this->RequiredKeywords;
 }
 
 QString generateCMakeOptions(QList<CMakeOption> *options)
@@ -29,19 +32,71 @@ QString generateCMakeOptions(QList<CMakeOption> *options)
 
 bool Project::Load(QString text)
 {
-    if (!text.contains(QT_Target))
+    this->ParseQmake(text);
+    return true;
+}
+
+bool Project::ParseQmake(QString text)
+{
+    ParserState state = ParserState_LookingForKeyword;
+    // Process the file line by line
+    QStringList lines = text.split("\n");
+    QString data_buffer;
+    QString current_word;
+    QString current_line;
+    foreach (QString line, lines)
     {
-        Logs::ErrorLog("Required TARGET not found");
+        // Trim leading spaces
+        while (line.startsWith(" "))
+            line = line.mid(1);
+        // If line starts with hash we can ignore it
+        if (line.startsWith("#") || line.isEmpty())
+            continue;
+        if (state == ParserState_LookingForKeyword)
+        {
+            // we are now looking for a keyword
+            QString keyword = line;
+            if (keyword.contains(" "))
+                keyword = keyword.mid(0, keyword.indexOf(" "));
+            Logs::DebugLog("Possible keyword: " + keyword);
+            if (this->KnownSimpleKeywords.contains(keyword))
+            {
+                if (!this->ProcessSimpleKeyword(keyword, line))
+                    return false;
+            } else if (this->KnownComplexKeywords.contains(keyword))
+            {
+                current_word = keyword;
+                current_line = line;
+                data_buffer = line;
+                if (line.endsWith("\\"))
+                {
+                    state = ParserState_FetchingData;
+                } else
+                {
+                    this->ProcessComplexKeyword(keyword, current_line, data_buffer);
+                }
+            } else
+            {
+                Logs::DebugLog("Ignoring unknown keyword: " + keyword);
+            }
+        } else if (state == ParserState_FetchingData)
+        {
+            data_buffer += "\n" + line;
+            if (!line.endsWith("\\"))
+            {
+                state = ParserState_LookingForKeyword;
+                this->ProcessComplexKeyword(current_word, current_line, data_buffer);
+            }
+        }
+    }
+    if (!this->RemainingRequiredKeywords.isEmpty())
+    {
+        foreach (QString word, this->RemainingRequiredKeywords)
+        {
+            Logs::ErrorLog("Required keyword not found: " + word);
+        }
         return false;
     }
-    QString target = text.mid(text.indexOf(QT_Target) + QT_Target.length());
-    // remove all leading space
-    while (target.startsWith(" "))
-    {
-        target = target.mid(1);
-    }
-    target = FinishCut(target);
-    ProjectName = target;
     return true;
 }
 
@@ -79,4 +134,70 @@ QString Project::FinishCut(QString text)
         text = text.mid(0, text.indexOf(" "));
     }
     return text;
+}
+
+bool Project::ProcessSimpleKeyword(QString word, QString line)
+{
+    if (this->RemainingRequiredKeywords.contains(word))
+        this->RemainingRequiredKeywords.removeAll(word);
+    if (word == "TARGET")
+    {
+        if (!line.contains("="))
+        {
+            Logs::ErrorLog("Syntax error: expected '=' not found");
+            Logs::ErrorLog("Line: " + line);
+            return false;
+        }
+        QString target_name = line.mid(line.indexOf("=") + 1);
+        while (target_name.startsWith(" "))
+            target_name = target_name.mid(1);
+        // Remove quotes
+        target_name.replace("\"", "");
+        // Project name should not end with spaces either
+        target_name = target_name.trimmed();
+        this->ProjectName = target_name;
+    }
+    return true;
+}
+
+bool Project::ProcessComplexKeyword(QString word, QString line, QString data_buffer)
+{
+    if (this->RemainingRequiredKeywords.contains(word))
+        this->RemainingRequiredKeywords.removeAll(word);
+    if (word == "SOURCES")
+    {
+        if (!line.contains("="))
+        {
+            Logs::ErrorLog("Syntax error: expected '=' or '+=', neither of these 2 found");
+            Logs::ErrorLog("Line: " + line);
+            return false;
+        }
+        if (!line.contains("+="))
+        {
+            // Wipe current buffer
+            this->Sources.clear();
+        }
+        data_buffer = data_buffer.mid(data_buffer.indexOf("=") + 1);
+        data_buffer = data_buffer.replace("\n", " ");
+        data_buffer = data_buffer.replace("\\", " ");
+        this->Sources << data_buffer.split(" ", QString::SkipEmptyParts);
+    } else if (word == "HEADERS")
+    {
+        if (!line.contains("="))
+        {
+            Logs::ErrorLog("Syntax error: expected '=' or '+=', neither of these 2 found");
+            Logs::ErrorLog("Line: " + line);
+            return false;
+        }
+        if (!line.contains("+="))
+        {
+            // Wipe current buffer
+            this->Headers.clear();
+        }
+        data_buffer = data_buffer.mid(data_buffer.indexOf("=") + 1);
+        data_buffer = data_buffer.replace("\n", " ");
+        data_buffer = data_buffer.replace("\\", " ");
+        this->Headers << data_buffer.split(" ", QString::SkipEmptyParts);
+    }
+    return true;
 }
