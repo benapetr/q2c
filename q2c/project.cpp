@@ -14,6 +14,7 @@
 Project::Project()
 {
     this->ProjectName = "";
+    this->CMakeMinumumVersion = "VERSION 2.6";
     this->KnownSimpleKeywords << "TARGET";
     this->RequiredKeywords << "TARGET";
     this->KnownComplexKeywords << "SOURCES" << "HEADERS";
@@ -116,7 +117,7 @@ QString Project::ToCmake()
     source += "# Project converted from qmake file using q2c\n";
     source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
     source += "#-----------------------------------------------------------------\n";
-    source += "cmake_minimum_required (VERSION 2.6)\n";
+    source += "cmake_minimum_required (" + this->CMakeMinumumVersion + ")\n";
     source += "project(" + ProjectName + ")\n";
     //! \todo Somewhere here we should generate options for CMake based on Qt version preference
     source += generateCMakeOptions(&this->CMakeOptions);

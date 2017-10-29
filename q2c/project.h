@@ -50,6 +50,7 @@ class Project
         //! that there will be switch in CMake that lets user decide in build time
         QtVersion Version;
         QString ProjectName;
+        QString CMakeMinumumVersion;
     private:
         static QString FinishCut(QString text);
         bool ParseStandardQMakeList(QList<QString> *list, QString line, QString text);
