@@ -58,6 +58,8 @@ class Project
         bool ProcessSimpleKeyword(QString word, QString line);
         bool ProcessComplexKeyword(QString word, QString line, QString data_buffer);
         QString GetCMakeDefaultQtLibs();
+        QString GetCMakeQt4Libs();
+        QString GetCMakeQt5Libs();
         QList<QString> KnownSimpleKeywords;
         QList<QString> KnownComplexKeywords;
         //! Keywords that must be in source document
@@ -65,6 +67,7 @@ class Project
         QList<QString> RemainingRequiredKeywords;
         QList<QString> Sources;
         QList<QString> Headers;
+        QList<QString> Modules;
         QList<QString> UIList;
 };
 

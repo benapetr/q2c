@@ -27,6 +27,7 @@ Project::Project()
         this->Version = QtVersion_Qt5;
     }
     this->RemainingRequiredKeywords = this->RequiredKeywords;
+    this->Modules << "core";
 }
 
 QString generateCMakeOptions(QList<CMakeOption> *options)
@@ -135,6 +136,9 @@ QString Project::ToCmake()
     //! \todo Somewhere here we should generate options for CMake based on Qt version preference
     source += generateCMakeOptions(&this->CMakeOptions);
 
+    // Qt libs, if needed
+    source += this->GetCMakeDefaultQtLibs();
+
     // Sources, headers and so on
     if (!this->Sources.isEmpty())
     {
@@ -238,7 +242,40 @@ bool Project::ProcessComplexKeyword(QString word, QString line, QString data_buf
 
 QString Project::GetCMakeDefaultQtLibs()
 {
+    if (this->Version == QtVersion_Qt4)
+        return this->GetCMakeQt4Libs();
+    else if (this->Version == QtVersion_Qt5)
+        return this->GetCMakeQt5Libs();
 
+    QString result = "IF (QT5BUILD)\n";
+    result += this->GetCMakeQt5Libs();
+    result += "ELSE()\n";
+    result += this->GetCMakeQt4Libs();
+    result += "ENDIF()\n";
+    return result;
+}
+
+QString Project::GetCMakeQt4Libs()
+{
+    QString result;
+    result += "find_package(Qt4 REQUIRED)\n";
+    return result;
+}
+
+QString Project::GetCMakeQt5Libs()
+{
+    QString result;
+    QString includes;
+    if (this->Modules.contains("core"))
+    {
+        result += "find_package(Qt5Core REQUIRED)\n";
+    }
+    if (includes.size())
+    {
+        result += "set(QT_INCLUDES " + includes + ")\n";
+        result += "include_directories(${QT_INCLUDES})\n";
+    }
+    return result;
 }
 
 CMakeOption::CMakeOption(QString name, QString description, QString __default)
