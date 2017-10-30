@@ -188,15 +188,24 @@ bool Project::ParseStandardQMakeList(QList<QString> *list, QString line, QString
         Logs::ErrorLog("Line: " + line);
         return false;
     }
+    text = text.mid(text.indexOf("=") + 1);
+    text = text.replace("\n", " ");
+    text = text.replace("\\", " ");
     if (!line.contains("+="))
     {
         // Wipe current buffer
         list->clear();
+    } else if (line.contains("-="))
+    {
+        QList<QString> items = text.split(" ", QString::SkipEmptyParts);
+        foreach (QString rm, items)
+        {
+            list->removeAll(rm);
+        }
+        return true;
     }
-    text = text.mid(text.indexOf("=") + 1);
-    text = text.replace("\n", " ");
-    text = text.replace("\\", " ");
     list->append(text.split(" ", QString::SkipEmptyParts));
+    return true;
 }
 
 bool Project::ProcessSimpleKeyword(QString word, QString line)
