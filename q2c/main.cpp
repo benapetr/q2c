@@ -169,7 +169,7 @@ int main(int argc, char *argv[])
         delete file;
         return 6;
     }
-    if (!file->open(QIODevice::ReadWrite))
+    if (!file->open(QIODevice::ReadWrite | QIODevice::Truncate | QIODevice::Text))
     {
         Logs::ErrorLog("Unable to open for writing: " + Configuration::OutputFile);
         delete file;

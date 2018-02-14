@@ -19,6 +19,8 @@ class Generic
 {
     public:
         static QString ExpandedString(QString string, unsigned int minimum_size, unsigned int maximum_size = 0);
+        static QString Indent(QString input, unsigned int indentation = 4);
+        static QString CapitalFirst(QString text);
 };
 
 #endif // GENERIC_H

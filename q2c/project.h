@@ -13,6 +13,7 @@
 
 #include <QString>
 #include <QList>
+#include <QHash>
 #include <QDateTime>
 #include "logs.h"
 
@@ -60,6 +61,7 @@ class Project
         QString GetCMakeDefaultQtLibs();
         QString GetCMakeQt4Libs();
         QString GetCMakeQt5Libs();
+        QString GetCMakeQtModules();
         QList<QString> KnownSimpleKeywords;
         QList<QString> KnownComplexKeywords;
         //! Keywords that must be in source document

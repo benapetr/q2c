@@ -9,6 +9,7 @@
 //GNU General Public License for more details.
 
 #include "project.h"
+#include "generic.h"
 #include <QStringList>
 
 Project::Project()
@@ -164,6 +165,10 @@ QString Project::ToCmake()
     if (!this->Headers.isEmpty())
         source += " ${" + this->ProjectName + "_HEADERS}";
     source += ")\n";
+
+    // Qt5 hack
+    source += this->GetCMakeQtModules();
+
     return source;
 }
 
@@ -257,9 +262,14 @@ QString Project::GetCMakeDefaultQtLibs()
         return this->GetCMakeQt5Libs();
 
     QString result = "IF (QT5BUILD)\n";
-    result += this->GetCMakeQt5Libs();
+    result += Generic::Indent(this->GetCMakeQt5Libs());
+    /*
+    QT5_WRAP_UI(project_FORMS_HEADERS ${project_FORMS})
+    QT5_ADD_RESOURCES(project_RESOURCES_RCC ${project_RESOURCES})
+    */
+    result += Generic::Indent("QT5_WRAP_CPP(" + this->ProjectName + "_HEADERS_MOC ${HuggleLite_HEADERS})\n");
     result += "ELSE()\n";
-    result += this->GetCMakeQt4Libs();
+    result += Generic::Indent(this->GetCMakeQt4Libs());
     result += "ENDIF()\n";
     return result;
 }
@@ -275,16 +285,61 @@ QString Project::GetCMakeQt5Libs()
 {
     QString result;
     QString includes;
-    if (this->Modules.contains("core"))
+
+    //! \todo Move this somewhere so it's cached between the calls
+    QHash<QString, QString> Qt5ModuleCMakeNames;
+    QHash<QString, QString> Qt5ModuleIncludeDir;
+
+    Qt5ModuleCMakeNames.insert("core", "Qt5Core");
+    Qt5ModuleIncludeDir.insert("core", "${Qt5Core_INCLUDE_DIRS}");
+    Qt5ModuleCMakeNames.insert("gui", "Qt5Gui");
+    Qt5ModuleIncludeDir.insert("gui", "${Qt5Gui_INCLUDE_DIRS}");
+    Qt5ModuleCMakeNames.insert("xml", "Qt5Xml");
+    Qt5ModuleIncludeDir.insert("xml", "${Qt5Xml_INCLUDE_DIRS}");
+    Qt5ModuleCMakeNames.insert("widgets", "Qt5Widgets");
+    Qt5ModuleIncludeDir.insert("widgets", "${Qt5Widgets_INCLUDE_DIRS}");
+    Qt5ModuleCMakeNames.insert("network", "Qt5Network");
+    Qt5ModuleIncludeDir.insert("network", "${Qt5Network_INCLUDE_DIRS}");
+    Qt5ModuleCMakeNames.insert("multimedia", "Qt5Multimedia");
+    Qt5ModuleIncludeDir.insert("multimedia", "${Qt5Multimedia_INCLUDE_DIRS}");
+
+    foreach (QString module, this->Modules)
     {
-        result += "find_package(Qt5Core REQUIRED)\n";
+        if (Qt5ModuleCMakeNames.contains(module))
+            result += "find_package(" + Qt5ModuleCMakeNames[module] + " REQUIRED)\n";
+        if (Qt5ModuleIncludeDir.contains(module))
+            includes += " " + Qt5ModuleIncludeDir[module];
     }
+
     if (includes.size())
     {
-        result += "set(QT_INCLUDES " + includes + ")\n";
+        result += "set(QT_INCLUDES" + includes + ")\n";
         result += "include_directories(${QT_INCLUDES})\n";
     }
     return result;
+}
+
+QString Project::GetCMakeQtModules()
+{
+    if (this->Version == QtVersion_Qt4)
+        return "";
+
+    if (this->Modules.isEmpty())
+        return "";
+
+    QString modules_string = "qt5_use_modules(" + this->ProjectName;
+    foreach (QString module, this->Modules)
+        modules_string += " " + Generic::CapitalFirst(module);
+
+    modules_string += ")";
+
+    if (this->Version == QtVersion_Qt5)
+    {
+        return modules_string;
+    } else
+    {
+        return "IF (QT5BUILD)\n" + Generic::Indent(modules_string) + "\n" + "ENDIF()\n";
+    }
 }
 
 CMakeOption::CMakeOption(QString name, QString description, QString __default)

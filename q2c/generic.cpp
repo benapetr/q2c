@@ -11,6 +11,7 @@
 // Copyright (c) Petr Bena 2017
 
 #include "generic.h"
+#include <QStringList>
 
 QString Generic::ExpandedString(QString string, unsigned int minimum_size, unsigned int maximum_size)
 {
@@ -31,4 +32,33 @@ QString Generic::ExpandedString(QString string, unsigned int minimum_size, unsig
         string += " ";
 
     return string;
+}
+
+QString Generic::Indent(QString input, unsigned int indentation)
+{
+    QStringList lines = input.split("\n");
+    QString indent = "";
+    while (indentation-- > 0)
+        indent += " ";
+    QString result;
+    foreach (QString line, lines)
+    {
+        if (!line.trimmed().isEmpty())
+            result += indent + line + "\n";
+        else
+            result += "\n";
+    }
+    if (result.endsWith("\n"))
+        result = result.mid(0, result.length() - 1);
+
+    return result;
+}
+
+QString Generic::CapitalFirst(QString text)
+{
+    if (!text.isEmpty())
+    {
+        text[0] = text[0].toUpper();
+    }
+    return text;
 }
