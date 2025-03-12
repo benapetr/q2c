@@ -9,132 +9,79 @@
 //GNU General Public License for more details.
 
 #include <QCoreApplication>
-#include <iostream>
+#include <QFile>
 #include <QDir>
+#include <iostream>
 #include "configuration.h"
 #include "project.h"
-#include "logs.h"
 #include "terminalparser.h"
+#include "logs.h"
 
 using namespace std;
 
-//! Scan for input file and return true if it finds some
-bool DetectInput()
+static bool DetectInput()
 {
-    QDir d(QDir::currentPath());
-    QStringList files = d.entryList();
+    QStringList files;
+    foreach (QString filename, QDir(".").entryList())
+    {
+        if (filename.toLower().endsWith(".pro"))
+        {
+            files.append(filename);
+        }
+    }
+
+    if (files.count() == 0)
+    {
+        return false;
+    }
+
+    if (files.count() == 1)
+    {
+        Configuration::InputFile = files.at(0);
+        return true;
+    }
+
+    cout << endl << "Following project files were found in current directory:" << endl;
     int x = 0;
-    bool found = false;
     while (x < files.count())
     {
-        QString filename = files.at(x);
-        filename.toLower();
-        if (filename.endsWith(".pro"))
-        {
-            if (found)
-            {
-                // more pro files exist, let's print error and quit
-                Logs::ErrorLog("There are multiple .pro files in this directory, you need to explicitly provide");
-                Logs::ErrorLog("the project you want to convert, see --help for more");
-                return false;
-            }
-            found = true;
-            Configuration::InputFile = files.at(x);
-        }
+        cout << files.at(x).toStdString() << endl;
         x++;
     }
-    return found;
-}
 
-int Parser_Input(TerminalParser *parser, QStringList params)
-{
-    Q_UNUSED(parser);
-    Configuration::InputFile = params.at(0);
-    return 0;
-}
-
-int Parser_Output(TerminalParser *parser, QStringList params)
-{
-    Q_UNUSED(parser);
-    Configuration::OutputFile = params.at(0);
-    return 0;
-}
-
-int Parser_Qt4(TerminalParser *parser, QStringList params)
-{
-    Q_UNUSED(params);
-    Q_UNUSED(parser);
-    Configuration::only_qt4 = true;
-    return 0;
-}
-
-int Parser_Qt5(TerminalParser *parser, QStringList params)
-{
-    Q_UNUSED(params);
-    Q_UNUSED(parser);
-    Configuration::only_qt5 = true;
-    return 0;
-}
-
-int Parser_Force(TerminalParser *parser, QStringList params)
-{
-    Q_UNUSED(params);
-    Q_UNUSED(parser);
-    Configuration::Forcing = true;
-    return 0;
-}
-
-int Parser_Verbosity(TerminalParser *parser, QStringList params)
-{
-    Q_UNUSED(params);
-    Q_UNUSED(parser);
-    Configuration::Verbosity++;
-    return 0;
+    return false;
 }
 
 int main(int argc, char *argv[])
 {
-    QCoreApplication::setApplicationName("q2c");
+    QCoreApplication a(argc, argv);
+    // Parse options
+    TerminalParser parser;
 
-    int c = 0;
-    QStringList args;
-    while (c < argc)
+    if (!parser.Parse(argc, argv))
     {
-        args.append(QString(argv[c]));
-        c++;
+        return TP_RESULT_SHUT;
     }
-    TerminalParser *tp = new TerminalParser();
-    tp->Register('v', "verbose", "Increases verbosity", 0, (TP_Callback)Parser_Verbosity);
-    tp->Register('o', "out", "Specify output file", 1, (TP_Callback)Parser_Output);
-    tp->Register('i', "in", "Specify input file", 1, (TP_Callback)Parser_Input);
-    tp->Register('4', "qt4", "Support only qt4", 0, (TP_Callback)Parser_Qt4);
-    tp->Register('5', "qt5", "Support only qt5", 0, (TP_Callback)Parser_Qt5);
-    tp->Register('f', "force", "Ignore any potential errors or dangers and overwrite all existing files", 0, (TP_Callback)Parser_Force);
-    if (!tp->Parse(argc, argv))
-    {
-        // Parameter require to exit (--help) etc
-        delete tp;
-        return 0;
-    }
-    delete tp;
-    Logs::DebugLog("Verbosity: " + QString::number(Configuration::Verbosity));
+
+    // Verbosity
+    Logs::DebugLog("Verbosity: " + QString::number(Configuration::verbosity_level));
+
     if (Configuration::InputFile == "")
     {
-        // user didn't provide any input file
         if (!DetectInput())
         {
-            return 2;
+            Logs::ErrorLog("No input file was provided");
+            return TP_RESULT_SHUT;
         }
         Logs::DebugLog("Resolved input name to " + Configuration::InputFile);
     }
     if (Configuration::OutputFile == "")
     {
-        // user didn't provide output file name
-        // we can simply reuse the original name
+        // Let's try to resolve it from input file
         if (!Configuration::InputFile.contains("."))
         {
-            Logs::ErrorLog("The input file can't be converted to output file, please provide output file name");
-            return 3;
+            Logs::ErrorLog("Unable to resolve output file name from: " + Configuration::InputFile);
+            return TP_RESULT_SHUT;
         }
         Configuration::OutputFile = Configuration::InputFile.mid(0, Configuration::InputFile.indexOf("."));
         if (Configuration::q2c)
@@ -146,43 +93,55 @@ int main(int argc, char *argv[])
         }
         Logs::DebugLog("Resolved output name to " + Configuration::OutputFile);
     }
-    // Load the project file
+
+    // Load the file
     QFile *file = new QFile(Configuration::InputFile);
     if (!file->open(QIODevice::ReadOnly))
     {
         Logs::ErrorLog("Unable to read: " + Configuration::InputFile);
         delete file;
-        return 4;
+        return TP_RESULT_FAIL;
     }
-    QString source = QString(file->readAll());
+    QString input_text = QString(file->readAll());
+    file->close();
     delete file;
-    Project *input = new Project();
-    if (!input->Load(source))
+
+    Project *project = new Project();
+    if (!project->Load(input_text))
     {
         Logs::ErrorLog("Unable to parse: " + Configuration::InputFile);
-        return 5;
+        delete project;
+        return TP_RESULT_FAIL;
     }
     file = new QFile(Configuration::OutputFile);
-    if ((!Configuration::Forcing) && file->exists())
+    if ((!Configuration::force) && file->exists())
     {
         Logs::ErrorLog("File " + Configuration::OutputFile + " already exist! I will not overwrite it unless you provide parameter -f for it");
         delete file;
-        return 6;
+        delete project;
+        return TP_RESULT_FAIL;
     }
-    if (!file->open(QIODevice::ReadWrite | QIODevice::Truncate | QIODevice::Text))
+    if (!file->open(QIODevice::WriteOnly))
     {
         Logs::ErrorLog("Unable to open for writing: " + Configuration::OutputFile);
         delete file;
-        return 7;
+        delete project;
+        return TP_RESULT_FAIL;
     }
+
+    QString result;
     if (Configuration::q2c)
     {
-        file->write(input->ToCmake().toUtf8());
+        result = project->ToCmake();
     } else
     {
-        file->write(input->ToQmake().toUtf8());
+        result = project->ToQmake();
     }
+
+    file->write(result.toUtf8());
+    file->close();
     delete file;
-    delete input;
+    delete project;
+
     return 0;
 }

@@ -32,6 +32,7 @@ class Project
     {
         QtVersion_Qt4,
         QtVersion_Qt5,
+        QtVersion_Qt6,
         QtVersion_All
     };
 
@@ -48,8 +49,6 @@ class Project
         QString ToQmake();
         QString ToCmake();
         QList<CMakeOption> CMakeOptions;
-        //! This is used to determine which target libraries are needed, if you specify All it means 
-        //! that there will be switch in CMake that lets user decide in build time
         QtVersion Version;
         QString ProjectName;
         QString CMakeMinumumVersion;
@@ -61,16 +60,51 @@ class Project
         QString GetCMakeDefaultQtLibs();
         QString GetCMakeQt4Libs();
         QString GetCMakeQt5Libs();
+        QString GetCMakeQt6Libs();
         QString GetCMakeQtModules();
+        QString ProcessConfigOptions();
+        QString ProcessDefines();
+        QString ProcessIncludePaths();
+        QString ProcessLibs();
+        QString ProcessUIFiles();
+        QString ProcessResources();
+        QString ProcessSubdirsInCMake();
+        
         QList<QString> KnownSimpleKeywords;
         QList<QString> KnownComplexKeywords;
-        //! Keywords that must be in source document
         QList<QString> RequiredKeywords;
         QList<QString> RemainingRequiredKeywords;
         QList<QString> Sources;
         QList<QString> Headers;
         QList<QString> Modules;
         QList<QString> UIList;
+        QList<QString> Config;
+        QList<QString> Defines;
+        QList<QString> IncludePaths;
+        QList<QString> Libraries;
+        QHash<QString, QString> Variables;
+        QList<QString> UIFiles;
+        QList<QString> ResourceFiles;
+        QList<QString> Subdirectories;
+        bool IsSubdirsProject;
+
+        bool ParseCondition(QString condition);
+        bool ProcessScope(QString line, QStringList &lines, int &currentLine);
+        bool EvaluateCondition(QString condition);
+        QString ProcessPlatformSpecific();
+        
+        // Nested scopes for conditions
+        struct ConditionalBlock {
+            QString condition;
+            bool active;
+            QList<QString> Sources;
+            QList<QString> Headers;
+            QList<QString> Defines;
+            QList<QString> IncludePaths;
+            QList<QString> Libraries;
+            QList<QString> Config;
+        };
+        QList<ConditionalBlock> ConditionalBlocks;
 };
 
 #endif // PROJECT_H

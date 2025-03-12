@@ -9,21 +9,23 @@
 //GNU General Public License for more details.
 
 #include "logs.h"
+#include "configuration.h"
+#include <iostream>
 
-void Logs::Log(QString text)
+void Logs::DebugLog(QString text, int verbosity)
 {
-    std::cout << text.toStdString() << std::endl;
+    if (verbosity <= Configuration::verbosity_level)
+    {
+        std::cout << "[DEBUG] " << text.toStdString() << std::endl;
+    }
 }
 
 void Logs::ErrorLog(QString text)
 {
-    std::cerr << text.toStdString() << std::endl;
+    std::cerr << "[ERROR] " << text.toStdString() << std::endl;
 }
 
-void Logs::DebugLog(QString text, int verbosity)
+void Logs::Log(QString text)
 {
-    if (verbosity <= Configuration::Verbosity)
-    {
-        Log(text);
-    }
+    std::cout << "[INFO] " << text.toStdString() << std::endl;
 }

@@ -13,15 +13,16 @@
 #ifndef TERMINALPARSER_H
 #define TERMINALPARSER_H
 
-#define TP_RESULT_OK 0
-#define TP_RESULT_SHUT 1
-
-#include <QStringList>
-#include <QList>
 #include <QString>
+#include <QList>
 
+#define TP_RESULT_OK 0
+#define TP_RESULT_FAIL 1
+#define TP_RESULT_SHUT 2
+
+// Forward declaration
 class TerminalParser;
-class TerminalItem;
+
 typedef int (*TP_Callback) (TerminalParser*, QStringList);
 
 class TerminalItem
@@ -54,6 +55,8 @@ class TerminalParser
         QList<TerminalItem> GetItems();
         TerminalItem *GetItem(char name);
         TerminalItem *GetItem(QString name);
+        QString input_name;
+        QString output_name;
 
     private:
         QList<TerminalItem> _items;

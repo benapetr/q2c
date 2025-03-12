@@ -16,13 +16,15 @@
 class Configuration
 {
     public:
-        static int Verbosity;
-        static QString InputFile;
-        static QString OutputFile;
+        static bool debug;
         static bool only_qt4;
         static bool only_qt5;
-        static bool Forcing;
-        static bool q2c;
+        static bool only_qt6;
+        static int verbosity_level;
+        static QString InputFile;
+        static QString OutputFile;
+        static bool force;      // Single flag for force overwrite
+        static bool q2c;       // Direction of conversion (true = qmake to cmake, false = cmake to qmake)
 };
 
 #endif // CONFIGURATION_H

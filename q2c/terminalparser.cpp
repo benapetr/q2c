@@ -14,6 +14,75 @@
 #include <iostream>
 #include "generic.h"
 #include "terminalparser.h"
+#include "configuration.h"
+
+static int Parser_Input(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    if (params.isEmpty())
+        return TP_RESULT_FAIL;
+
+    Configuration::InputFile = params.at(0);
+    return TP_RESULT_OK;
+}
+
+static int Parser_Output(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    if (params.isEmpty())
+        return TP_RESULT_FAIL;
+
+    Configuration::OutputFile = params.at(0);
+    return TP_RESULT_OK;
+}
+
+static int Parser_Debug(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::debug = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_Qt4(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::only_qt4 = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_Qt5(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::only_qt5 = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_Qt6(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::only_qt6 = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_Force(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::force = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_Verbosity(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::verbosity_level++;
+    return TP_RESULT_OK;
+}
 
 static int PrintHelp(TerminalParser *parser, QStringList params)
 {
@@ -79,98 +148,90 @@ static int PrintHelp(TerminalParser *parser, QStringList params)
 TerminalParser::TerminalParser()
 {
     this->Register('h', "help", "Display help", 0, (TP_Callback)PrintHelp);
+    this->Register('v', "verbose", "Increase verbosity level", 0, (TP_Callback)Parser_Verbosity);
+    this->Register('d', "debug", "Enable debug output", 0, (TP_Callback)Parser_Debug);
+    this->Register('4', "qt4", "Generate Qt4 compatible CMake file", 0, (TP_Callback)Parser_Qt4);
+    this->Register('5', "qt5", "Generate Qt5 compatible CMake file", 0, (TP_Callback)Parser_Qt5);
+    this->Register('6', "qt6", "Generate Qt6 compatible CMake file", 0, (TP_Callback)Parser_Qt6);
+    this->Register('f', "force", "Force overwrite of existing files", 0, (TP_Callback)Parser_Force);
+    this->Register('i', "input", "Input file to load", 1, (TP_Callback)Parser_Input);
+    this->Register('o', "output", "Output file", 1, (TP_Callback)Parser_Output);
 }
 
 bool TerminalParser::Parse(int argc, char **argv)
 {
-    int x = 0;
-    int expected_parameters = 0;
-    QStringList parameter_buffer;
-    TerminalItem *item = NULL;
-    while (x < argc)
+    bool looking_for_input = true;
+    bool looking_for_output = true;
+    int curr = 1;
+    while (curr < argc)
     {
-        QString parameter = QString(argv[x++]);
-        if (expected_parameters > 0)
-        {
-            // the last argument we processed has some parameters, so we are now processing them into a buffer
-            parameter_buffer << parameter;
-            expected_parameters--;
-            if (expected_parameters == 0)
-            {
-                // execute
-                if (item->Exec(this, parameter_buffer) == TP_RESULT_SHUT)
-                {
-                    delete item;
-                    return false;
-                }
-                parameter_buffer.clear();
-            }
-            continue;
-        }
-        if (parameter.length() < 2)
-        {
-            std::cerr << "ERROR: unrecognized parameter: " << parameter.toStdString() << std::endl;
-            return false;
-        }
+        QString parameter = QString(argv[curr]);
         if (parameter.startsWith("--"))
         {
-            // It's a word parameter
-            delete item;
-            item = this->GetItem(parameter.mid(2));
-            if (item == NULL)
+            QString p = parameter.mid(2);
+            TerminalItem *item = this->GetItem(p);
+            if (item != nullptr)
             {
-                std::cerr << "ERROR: unrecognized parameter: " << parameter.toStdString() << std::endl;
+                QStringList parameters;
+                // If this option requires parameters, gather them
+                int required = item->GetParameters();
+                while (required > 0 && curr + 1 < argc)
+                {
+                    curr++;
+                    parameters.append(QString(argv[curr]));
+                    required--;
+                }
+                if (required > 0)
+                {
+                    // Error not enough parameters
+                    std::cerr << "Not enough parameters for option: " << p.toStdString() << std::endl;
+                    delete item;
+                    return false;
+                }
+                int result = item->Exec(this, parameters);
                 delete item;
-                return false;
+                if (result != TP_RESULT_OK)
+                    return false;
             }
-            expected_parameters = item->GetParameters();
-            if (expected_parameters)
-                continue;
-            // let's process this item
-            if (item->Exec(this, parameter_buffer) == TP_RESULT_SHUT)
-            {
-                delete item;
-                return false;
-            }
-        }
-        else if (parameter.startsWith("-"))
+        } else if (parameter.startsWith("-"))
         {
-            // It's a single character(s), let's process them recursively
-            int symbol_px = 0;
-            while (parameter.size() > ++symbol_px)
+            if (parameter.length() != 2)
             {
-                char sx = parameter[symbol_px].toLatin1();
-                delete item;
-                item = this->GetItem(sx);
-                if (item == NULL)
-                {
-                    std::cerr << "ERROR: unrecognized parameter: -" << sx << std::endl;
-                    delete item;
-                    return false;
-                }
-                expected_parameters = item->GetParameters();
-                if (expected_parameters && (symbol_px+1) < parameter.size())
-                {
-                    std::cerr << "ERROR: not enough parameters provided for -" << sx << std::endl;
-                    delete item;
-                    return false;
-                }
-                if (expected_parameters)
-                    continue;
-                // let's process this item
-                if (item->Exec(this, parameter_buffer) == TP_RESULT_SHUT)
-                {
-                    delete item;
-                    return false;
-                }
+                std::cerr << "Invalid parameter: " << parameter.toStdString() << " (multiple characters)" << std::endl;
+                return false;
             }
+            TerminalItem *item = this->GetItem(parameter[1].toLatin1());
+            if (item != nullptr)
+            {
+                QStringList parameters;
+                int required = item->GetParameters();
+                while (required > 0 && curr + 1 < argc)
+                {
+                    curr++;
+                    parameters.append(QString(argv[curr]));
+                    required--;
+                }
+                if (required > 0)
+                {
+                    std::cerr << "Not enough parameters for option: " << parameter.toStdString() << std::endl;
+                    delete item;
+                    return false;
+                }
+                int result = item->Exec(this, parameters);
+                delete item;
+                if (result != TP_RESULT_OK)
+                    return false;
+            }
+        } else if (looking_for_input)
+        {
+            input_name = parameter;
+            looking_for_input = false;
+        } else if (looking_for_output)
+        {
+            output_name = parameter;
+            looking_for_output = false;
         }
-    }
-    delete item;
-    if (expected_parameters)
-    {
-        std::cerr << "ERROR: missing parameter" << std::endl;
-        return false;
+        curr++;
     }
     return true;
 }

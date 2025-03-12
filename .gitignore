@@ -1,0 +1,46 @@
+# C++ build artifacts
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.lib
+*.exe
+
+# Qt-specific
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.moc
+moc_*.cpp
+qrc_*.cpp
+ui_*.h
+Makefile*
+*build-*
+*.qm
+*.prl
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+_deps/
+*.cmake
+
+# IDE-specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Binary output directories
+release/
+debug/
+build/
+
+# Project-specific binaries
+q2c/q2c

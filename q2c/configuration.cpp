@@ -10,11 +10,13 @@
 
 #include "configuration.h"
 
-int Configuration::Verbosity = 0;
-QString Configuration::InputFile = "";
-QString Configuration::OutputFile = "";
-bool Configuration::Forcing = false;
-bool Configuration::q2c = true;
+bool Configuration::debug = false;
 bool Configuration::only_qt4 = false;
 bool Configuration::only_qt5 = false;
+bool Configuration::only_qt6 = false;
+bool Configuration::force = false;
+int Configuration::verbosity_level = 0;
+QString Configuration::InputFile = "";
+QString Configuration::OutputFile = "";
+bool Configuration::q2c = true;
 
