@@ -213,7 +213,7 @@ bool Project::ProcessScope(QString line, QStringList &lines, int &currentLine)
     return true;
 }
 
-bool Project::ParseCondition(QString condition)
+QString Project::ParseCondition(QString condition)
 {
     // Convert qmake conditions to CMake conditions and store in the condition string
     condition = condition.replace("$$QT_MAJOR_VERSION", "QT_VERSION_MAJOR");
@@ -226,8 +226,7 @@ bool Project::ParseCondition(QString condition)
     condition = condition.replace("||", " OR ");
     condition = condition.replace("!", " NOT ");
     
-    // Return true since we successfully parsed the condition
-    return true;
+    return condition;
 }
 
 bool Project::EvaluateCondition(QString condition)

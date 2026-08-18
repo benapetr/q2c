@@ -88,7 +88,7 @@ class Project
         QList<QString> Subdirectories;
         bool IsSubdirsProject;
 
-        bool ParseCondition(QString condition);
+        QString ParseCondition(QString condition);
         bool ProcessScope(QString line, QStringList &lines, int &currentLine);
         bool EvaluateCondition(QString condition);
         QString ProcessPlatformSpecific();
