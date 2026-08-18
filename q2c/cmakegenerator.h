@@ -49,8 +49,12 @@ class CMakeGenerator
         QString GenerateDefines(const BuildTarget &target);
         QString GenerateIncludePaths(const BuildTarget &target);
         QString GenerateLibraries(const BuildTarget &target);
+        QString GenerateCompileOptions(const BuildTarget &target);
+        QString GenerateLinkOptions(const BuildTarget &target);
         QString GenerateUIFiles(const BuildTarget &target);
         QString GenerateResources(const BuildTarget &target);
+        QString GenerateTranslations(const BuildTarget &target);
+        QString GenerateInstallRules(const BuildTarget &target);
         QString GenerateSubdirs(const BuildProject &project, const BuildTarget &target);
         QString GenerateConditionalScopes(const BuildTarget &target);
         QString QtComponentName(QString module) const;

@@ -12,6 +12,13 @@
 #include "generic.h"
 #include <QDateTime>
 
+static QString CMakeQuote(QString value)
+{
+    if (value.contains(" ") || value.contains(";"))
+        return "\"" + value + "\"";
+    return value;
+}
+
 CMakeGenerator::CMakeGenerator(CMakeQtVersion version)
 {
     this->Version = version;
@@ -27,6 +34,8 @@ QString CMakeGenerator::Generate(const BuildProject &project, const QList<CMakeO
     source += "# Project converted from qmake file using q2c\n";
     source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
     source += "#-----------------------------------------------------------------\n";
+    foreach (QString warning, project.Warnings)
+        source += "# q2c warning: " + warning + "\n";
     source += "cmake_minimum_required (" + cmake_minimum + ")\n";
     source += "project(" + target_name + ")\n";
     source += this->GenerateOptions(options);
@@ -78,7 +87,11 @@ QString CMakeGenerator::Generate(const BuildProject &project, const QList<CMakeO
     source += this->GenerateConditionalScopes(*target);
     source += this->GenerateUIFiles(*target);
     source += this->GenerateResources(*target);
+    source += this->GenerateTranslations(*target);
     source += this->GenerateLibraries(*target);
+    source += this->GenerateCompileOptions(*target);
+    source += this->GenerateLinkOptions(*target);
+    source += this->GenerateInstallRules(*target);
     source += this->GenerateQtModules(*target);
 
     return source;
@@ -123,23 +136,36 @@ QString CMakeGenerator::GenerateConditionalScopes(const BuildTarget &target)
         if (!block.Sources.isEmpty())
         {
             result += "    target_sources(" + target.Name + " PRIVATE\n";
-            foreach (const QString &source, block.Sources)
-                result += "        " + source + "\n";
+        foreach (const QString &source, block.Sources)
+                result += "        " + CMakeQuote(source) + "\n";
             result += "    )\n";
         }
         foreach (const QString &define, block.Defines)
             result += "    add_definitions(-D" + define + ")\n";
         foreach (const QString &include, block.IncludePaths)
-            result += "    include_directories(" + include + ")\n";
-        foreach (const QString &lib, block.Libraries)
+            result += "    include_directories(" + CMakeQuote(include) + ")\n";
+        foreach (const QString &option, block.CompileOptions)
+            result += "    target_compile_options(" + target.Name + " PRIVATE " + option + ")\n";
+        foreach (const QString &option, block.LinkOptions)
+            result += "    target_link_options(" + target.Name + " PRIVATE " + option + ")\n";
+        for (int i = 0; i < block.Libraries.size(); i++)
         {
+            QString lib = block.Libraries[i];
+            if (lib == "-framework" && i + 1 < block.Libraries.size())
+            {
+                result += "    target_link_libraries(" + target.Name + " \"-framework " + block.Libraries[i + 1] + "\")\n";
+                i++;
+                continue;
+            }
             if (lib.startsWith("-l"))
                 result += "    target_link_libraries(" + target.Name + " " + lib.mid(2) + ")\n";
             else if (lib.startsWith("-L"))
-                result += "    link_directories(" + lib.mid(2) + ")\n";
+                result += "    link_directories(" + CMakeQuote(lib.mid(2)) + ")\n";
             else
-                result += "    target_link_libraries(" + target.Name + " " + lib + ")\n";
+                result += "    target_link_libraries(" + target.Name + " " + CMakeQuote(lib) + ")\n";
         }
+        foreach (const QString &rule, block.InstallRules)
+            result += "    # qmake INSTALLS entry: " + rule + "\n";
         result += "endif()\n";
     }
     return result;
@@ -205,6 +231,20 @@ QString CMakeGenerator::GenerateResources(const BuildTarget &target)
     return result;
 }
 
+QString CMakeGenerator::GenerateTranslations(const BuildTarget &target)
+{
+    QString result;
+    if (target.TranslationFiles.isEmpty())
+        return result;
+
+    result += "\n# Translation files\n";
+    result += "set(" + target.Name + "_TRANSLATIONS";
+    foreach (QString translation, target.TranslationFiles)
+        result += " \"" + translation + "\"";
+    result += ")\n";
+    return result;
+}
+
 QString CMakeGenerator::GenerateConfigOptions(const BuildTarget &target)
 {
     QString result;
@@ -236,22 +276,53 @@ QString CMakeGenerator::GenerateIncludePaths(const BuildTarget &target)
 {
     QString result;
     foreach (QString path, target.IncludePaths)
-        result += "include_directories(" + path + ")\n";
+        result += "include_directories(" + CMakeQuote(path) + ")\n";
     return result;
 }
 
 QString CMakeGenerator::GenerateLibraries(const BuildTarget &target)
 {
     QString result;
-    foreach (QString lib, target.Libraries)
+    for (int i = 0; i < target.Libraries.size(); i++)
     {
+        QString lib = target.Libraries[i];
+        if (lib == "-framework" && i + 1 < target.Libraries.size())
+        {
+            result += "target_link_libraries(" + target.Name + " \"-framework " + target.Libraries[i + 1] + "\")\n";
+            i++;
+            continue;
+        }
         if (lib.startsWith("-l"))
             result += "target_link_libraries(" + target.Name + " " + lib.mid(2) + ")\n";
         else if (lib.startsWith("-L"))
-            result += "link_directories(" + lib.mid(2) + ")\n";
+            result += "link_directories(" + CMakeQuote(lib.mid(2)) + ")\n";
         else
-            result += "target_link_libraries(" + target.Name + " " + lib + ")\n";
+            result += "target_link_libraries(" + target.Name + " " + CMakeQuote(lib) + ")\n";
     }
+    return result;
+}
+
+QString CMakeGenerator::GenerateCompileOptions(const BuildTarget &target)
+{
+    QString result;
+    foreach (QString option, target.CompileOptions)
+        result += "target_compile_options(" + target.Name + " PRIVATE " + option + ")\n";
+    return result;
+}
+
+QString CMakeGenerator::GenerateLinkOptions(const BuildTarget &target)
+{
+    QString result;
+    foreach (QString option, target.LinkOptions)
+        result += "target_link_options(" + target.Name + " PRIVATE " + option + ")\n";
+    return result;
+}
+
+QString CMakeGenerator::GenerateInstallRules(const BuildTarget &target)
+{
+    QString result;
+    foreach (QString rule, target.InstallRules)
+        result += "# qmake INSTALLS entry: " + rule + "\n";
     return result;
 }
 

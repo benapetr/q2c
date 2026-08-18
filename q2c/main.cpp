@@ -162,6 +162,10 @@ int main(int argc, char *argv[])
         delete project;
         return TP_RESULT_FAIL;
     }
+    foreach (QString warning, project->GetModel().Warnings)
+    {
+        Logs::Log("Warning: " + warning);
+    }
 
     if (Configuration::check_only)
     {

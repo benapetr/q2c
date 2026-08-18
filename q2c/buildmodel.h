@@ -47,6 +47,10 @@ class BuildConditionalScope
         QList<QString> Defines;
         QList<QString> IncludePaths;
         QList<QString> Libraries;
+        QList<QString> TranslationFiles;
+        QList<QString> CompileOptions;
+        QList<QString> LinkOptions;
+        QList<QString> InstallRules;
         QList<QString> Config;
 };
 

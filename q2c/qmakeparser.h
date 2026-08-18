@@ -12,6 +12,7 @@
 #define QMAKEPARSER_H
 
 #include <QList>
+#include <QHash>
 #include <QString>
 #include <QStringList>
 #include "buildmodel.h"
@@ -34,6 +35,10 @@ class QMakeParser
         QList<QString> Defines;
         QList<QString> IncludePaths;
         QList<QString> Libraries;
+        QList<QString> TranslationFiles;
+        QList<QString> CompileOptions;
+        QList<QString> LinkOptions;
+        QList<QString> InstallRules;
         QList<QString> Config;
     };
 
@@ -43,17 +48,33 @@ class QMakeParser
 
     private:
         bool ParseStandardQMakeList(QList<QString> *list, QString line, QString text);
+        bool ApplyListOperation(QList<QString> *list, QString op, QStringList items);
+        bool ProcessAssignment(QString word, QString op, QString data);
         bool ProcessSimpleKeyword(QString word, QString line);
         bool ProcessComplexKeyword(QString word, QString line, QString data_buffer);
         bool ProcessScope(QString line, QStringList &lines, int &current_line);
+        bool ProcessInlineScope(QString condition, QString scoped_line, int line_number);
+        bool ProcessLine(QString line);
+        bool ExtractAssignment(QString line, QString *word, QString *op, QString *data);
+        int FindScopeColon(QString line);
+        bool ProcessInclude(QString line);
+        QString LoadIncludedFile(QString include_path);
+        QString StripComment(QString line);
+        QString ExpandVariables(QString text);
+        QStringList ExpandToken(QString token);
+        QStringList TokenizeValueList(QString text);
+        QString NormalizeCondition(QString condition);
+        QStringList NormalizeLines(QString text);
         QString ParseCondition(QString condition);
         bool EvaluateCondition(QString condition);
         void RefreshModel();
         BuildTargetType TargetTypeFromTemplate(QString value);
         BuildTargetType TargetTypeFromConfig(BuildTargetType current_type) const;
+        void AddWarning(QString warning);
 
         BuildProject *Model;
         QString SourceFile;
+        QString BaseDirectory;
         QString CMakeMinimumVersion;
         QString ProjectName;
         QString TemplateName;
@@ -68,8 +89,13 @@ class QMakeParser
         QList<QString> Defines;
         QList<QString> IncludePaths;
         QList<QString> Libraries;
+        QHash<QString, QStringList> Variables;
         QList<QString> UIFiles;
         QList<QString> ResourceFiles;
+        QList<QString> TranslationFiles;
+        QList<QString> CompileOptions;
+        QList<QString> LinkOptions;
+        QList<QString> InstallRules;
         QList<QString> Subdirectories;
         QList<ConditionalBlock> ConditionalBlocks;
         BuildTargetType TargetType;
