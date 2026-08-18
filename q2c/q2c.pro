@@ -21,7 +21,10 @@ SOURCES += main.cpp \
     project.cpp \
     logs.cpp \
     generic.cpp \
-    buildmodel.cpp
+    buildmodel.cpp \
+    qmakeparser.cpp \
+    cmakegenerator.cpp \
+    qmakegenerator.cpp
 
 HEADERS += \
     terminalparser.h \
@@ -29,4 +32,7 @@ HEADERS += \
     project.h \
     logs.h \
     generic.h \
-    buildmodel.h
+    buildmodel.h \
+    qmakeparser.h \
+    cmakegenerator.h \
+    qmakegenerator.h

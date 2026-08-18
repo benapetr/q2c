@@ -8,29 +8,16 @@
 //MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 //GNU General Public License for more details.
 
-#ifndef PROJECT_H
-#define PROJECT_H
+#ifndef QMAKEGENERATOR_H
+#define QMAKEGENERATOR_H
 
 #include <QString>
-#include <QList>
 #include "buildmodel.h"
-#include "cmakegenerator.h"
 
-class Project
+class QMakeGenerator
 {
     public:
-        Project();
-        bool Load(QString text);
-        bool ParseQmake(QString text);
-        QString ToQmake();
-        QString ToCmake();
-        QList<CMakeOption> CMakeOptions;
-        CMakeQtVersion Version;
-        QString ProjectName;
-        QString CMakeMinumumVersion;
-        const BuildProject &GetModel() const;
-    private:
-        BuildProject Model;
+        QString Generate(const BuildProject &project);
 };
 
-#endif // PROJECT_H
+#endif // QMAKEGENERATOR_H
