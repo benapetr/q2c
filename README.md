@@ -18,6 +18,21 @@ How to compile
 
 Enter the folder with source code and type `qmake && make`
 
+How to test
+============
+
+The test suite builds a small Qt console test runner that parses real fixture
+projects and checks the generated output.
+
+    mkdir -p tests/build
+    cd tests/build
+    qmake ../tests.pro
+    make
+    ./q2c_tests
+
+The CMake fixture is present for the future CMake parser work and is currently
+reported as skipped by the test runner.
+
 
 How to install
 ===============
