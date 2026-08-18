@@ -49,8 +49,7 @@ QString generateCMakeOptions(QList<CMakeOption> *options)
 
 bool Project::Load(QString text)
 {
-    this->ParseQmake(text);
-    return true;
+    return this->ParseQmake(text);
 }
 
 bool Project::ParseQmake(QString text)
@@ -103,7 +102,8 @@ bool Project::ParseQmake(QString text)
                     state = ParserState_FetchingData;
                 } else
                 {
-                    this->ProcessComplexKeyword(keyword, current_line, data_buffer);
+                    if (!this->ProcessComplexKeyword(keyword, current_line, data_buffer))
+                        return false;
                 }
             } else
             {
@@ -115,7 +115,8 @@ bool Project::ParseQmake(QString text)
             if (!line.endsWith("\\"))
             {
                 state = ParserState_LookingForKeyword;
-                this->ProcessComplexKeyword(current_word, current_line, data_buffer);
+                if (!this->ProcessComplexKeyword(current_word, current_line, data_buffer))
+                    return false;
             }
         }
     }
@@ -231,16 +232,8 @@ QString Project::ParseCondition(QString condition)
 
 bool Project::EvaluateCondition(QString condition)
 {
-    // Basic evaluation of common conditions
-    if (condition == "WIN32")
-        return false;  // We're generating CMake, it will evaluate at configure time
-    else if (condition == "UNIX")
-        return false;  // We're generating CMake, it will evaluate at configure time
-    else if (condition == "APPLE")
-        return false;  // We're generating CMake, it will evaluate at configure time
-    
-    // For now, we'll treat all other conditions as true during parsing
-    // The actual evaluation will happen during CMake generation
+    Q_UNUSED(condition);
+    // CMake will evaluate the generated condition at configure time.
     return true;
 }
 
@@ -306,36 +299,27 @@ QString Project::ToCmake()
     source += "cmake_minimum_required (" + this->CMakeMinumumVersion + ")\n";
 
     if (this->IsSubdirsProject)
-    {
-        source += "project(" + (ProjectName.isEmpty() ? "MainProject" : ProjectName) + ")\n\n";
-        source += ProcessSubdirsInCMake();
-    }
+        source += "project(" + (ProjectName.isEmpty() ? "MainProject" : ProjectName) + ")\n";
     else
-    {
         source += "project(" + ProjectName + ")\n";
-    }
+
     source += generateCMakeOptions(&this->CMakeOptions);
+
+    if (this->IsSubdirsProject)
+    {
+        source += "\n";
+        source += ProcessSubdirsInCMake();
+        return source;
+    }
 
     // Process CONFIG options
     source += ProcessConfigOptions();
-
-    // Process platform-specific code before general configuration
-    source += ProcessPlatformSpecific();
 
     // Process defines
     source += ProcessDefines();
 
     // Process include paths
     source += ProcessIncludePaths();
-
-    // Qt libs
-    source += this->GetCMakeDefaultQtLibs();
-
-    // Process UI files
-    source += ProcessUIFiles();
-
-    // Process resource files
-    source += ProcessResources();
 
     // Sources, headers and so on
     if (!this->Sources.isEmpty())
@@ -356,12 +340,28 @@ QString Project::ToCmake()
         }
         source += ")\n";
     }
+
+    // Qt libs
+    source += this->GetCMakeDefaultQtLibs();
+
     source += "add_executable(" + this->ProjectName;
     if (!this->Sources.isEmpty())
         source += " ${" + this->ProjectName + "_SOURCES}";
     if (!this->Headers.isEmpty())
         source += " ${" + this->ProjectName + "_HEADERS}";
     source += ")\n";
+
+    if (!this->Headers.isEmpty())
+        source += "target_sources(" + this->ProjectName + " PRIVATE ${" + this->ProjectName + "_HEADERS_MOC})\n";
+
+    // Process platform-specific code after the target exists.
+    source += ProcessPlatformSpecific();
+
+    // Process UI files
+    source += ProcessUIFiles();
+
+    // Process resource files
+    source += ProcessResources();
 
     // Process libraries
     source += ProcessLibs();
@@ -391,24 +391,6 @@ QString Project::ProcessSubdirsInCMake()
     result += "# Add all subprojects\n";
     foreach (QString subdir, this->Subdirectories)
     {
-        // Handle .pro file or directory reference
-        QString subdirPath = subdir;
-        if (!subdir.endsWith(".pro"))
-        {
-            subdirPath += "/" + subdir + ".pro";
-        }
-        
-        // Extract the subproject name from the path
-        QString subprojectName = subdir;
-        if (subprojectName.contains("/"))
-        {
-            subprojectName = subprojectName.mid(subprojectName.lastIndexOf("/") + 1);
-        }
-        if (subprojectName.endsWith(".pro"))
-        {
-            subprojectName = subprojectName.left(subprojectName.length() - 4);
-        }
-        
         result += "add_subdirectory(" + subdir + ")\n";
     }
     
@@ -581,15 +563,11 @@ bool Project::ParseStandardQMakeList(QList<QString> *list, QString line, QString
         Logs::ErrorLog("Line: " + line);
         return false;
     }
-    text = text.mid(text.indexOf("=") + 1);
-    text = text.replace("\n", " ");
-    text = text.replace("\\", " ");
-    if (!line.contains("+="))
+    if (line.contains("-="))
     {
-        // Wipe current buffer
-        list->clear();
-    } else if (line.contains("-="))
-    {
+        text = text.mid(text.indexOf("-=") + 2);
+        text = text.replace("\n", " ");
+        text = text.replace("\\", " ");
         QStringList items = text.split(" ", Qt::SkipEmptyParts);
         foreach (QString rm, items)
         {
@@ -597,7 +575,21 @@ bool Project::ParseStandardQMakeList(QList<QString> *list, QString line, QString
         }
         return true;
     }
-    list->append(text.split(" ", Qt::SkipEmptyParts));
+
+    text = text.mid(text.indexOf("=") + 1);
+    text = text.replace("\n", " ");
+    text = text.replace("\\", " ");
+    if (!line.contains("+="))
+    {
+        // Wipe current buffer
+        list->clear();
+    }
+    QStringList items = text.split(" ", Qt::SkipEmptyParts);
+    foreach (QString item, items)
+    {
+        if (!list->contains(item))
+            list->append(item);
+    }
     return true;
 }
 
@@ -701,14 +693,20 @@ QString Project::GetCMakeDefaultQtLibs()
 {
     QString result;
 
-    // Set C++ standard - Qt6 requires C++17
-    if (this->Version == QtVersion_Qt6)
+    bool has_cxx_standard = this->Config.contains("c++11") ||
+                            this->Config.contains("c++14") ||
+                            this->Config.contains("c++17");
+    if (!has_cxx_standard)
     {
-        result += "set(CMAKE_CXX_STANDARD 17)\n";
-    }
-    else
-    {
-        result += "set(CMAKE_CXX_STANDARD 11)\n";
+        // Set C++ standard - Qt6 requires C++17
+        if (this->Version == QtVersion_Qt6)
+        {
+            result += "set(CMAKE_CXX_STANDARD 17)\n";
+        }
+        else
+        {
+            result += "set(CMAKE_CXX_STANDARD 11)\n";
+        }
     }
     result += "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n\n";
 

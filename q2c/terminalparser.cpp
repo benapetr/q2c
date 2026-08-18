@@ -16,6 +16,8 @@
 #include "terminalparser.h"
 #include "configuration.h"
 
+static const char *Q2C_VERSION = "0.1.0";
+
 static int Parser_Input(TerminalParser *parser, QStringList params)
 {
     Q_UNUSED(parser);
@@ -48,6 +50,8 @@ static int Parser_Qt4(TerminalParser *parser, QStringList params)
 {
     Q_UNUSED(parser);
     Q_UNUSED(params);
+    Configuration::only_qt5 = false;
+    Configuration::only_qt6 = false;
     Configuration::only_qt4 = true;
     return TP_RESULT_OK;
 }
@@ -56,6 +60,8 @@ static int Parser_Qt5(TerminalParser *parser, QStringList params)
 {
     Q_UNUSED(parser);
     Q_UNUSED(params);
+    Configuration::only_qt4 = false;
+    Configuration::only_qt6 = false;
     Configuration::only_qt5 = true;
     return TP_RESULT_OK;
 }
@@ -64,6 +70,8 @@ static int Parser_Qt6(TerminalParser *parser, QStringList params)
 {
     Q_UNUSED(parser);
     Q_UNUSED(params);
+    Configuration::only_qt4 = false;
+    Configuration::only_qt5 = false;
     Configuration::only_qt6 = true;
     return TP_RESULT_OK;
 }
@@ -84,11 +92,56 @@ static int Parser_Verbosity(TerminalParser *parser, QStringList params)
     return TP_RESULT_OK;
 }
 
+static int Parser_DryRun(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::dry_run = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_Check(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::check_only = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_QmakeToCmake(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::direction_explicit = true;
+    Configuration::q2c = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_CmakeToQmake(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::direction_explicit = true;
+    Configuration::q2c = false;
+    return TP_RESULT_OK;
+}
+
+static int PrintVersion(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+
+    std::cout << QCoreApplication::applicationName().toStdString() << " version " << Q2C_VERSION << std::endl;
+    Configuration::exit_after_parse = true;
+    Configuration::exit_code = 0;
+    return TP_RESULT_OK;
+}
+
 static int PrintHelp(TerminalParser *parser, QStringList params)
 {
     Q_UNUSED(params);
 
-    std::cout << QCoreApplication::applicationName().toStdString() << " version " << "1.0.0" << std::endl << std::endl
+    std::cout << QCoreApplication::applicationName().toStdString() << " version " << Q2C_VERSION << std::endl << std::endl
               << "Following options can be used:" << std::endl << std::endl;
 
     // first we analyse the list of options and get the size of longest one
@@ -142,12 +195,15 @@ static int PrintHelp(TerminalParser *parser, QStringList params)
     std::cout << std::endl;
     std::cout << "This software is open source, contribute at http://github.com/benapetr/q2c" << std::endl;
 
-    return TP_RESULT_SHUT;
+    Configuration::exit_after_parse = true;
+    Configuration::exit_code = 0;
+    return TP_RESULT_OK;
 }
 
 TerminalParser::TerminalParser()
 {
     this->Register('h', "help", "Display help", 0, (TP_Callback)PrintHelp);
+    this->Register(0, "version", "Display version", 0, (TP_Callback)PrintVersion);
     this->Register('v', "verbose", "Increase verbosity level", 0, (TP_Callback)Parser_Verbosity);
     this->Register('d', "debug", "Enable debug output", 0, (TP_Callback)Parser_Debug);
     this->Register('4', "qt4", "Generate Qt4 compatible CMake file", 0, (TP_Callback)Parser_Qt4);
@@ -156,6 +212,10 @@ TerminalParser::TerminalParser()
     this->Register('f', "force", "Force overwrite of existing files", 0, (TP_Callback)Parser_Force);
     this->Register('i', "input", "Input file to load", 1, (TP_Callback)Parser_Input);
     this->Register('o', "output", "Output file", 1, (TP_Callback)Parser_Output);
+    this->Register(0, "dry-run", "Print converted output to stdout without writing files", 0, (TP_Callback)Parser_DryRun);
+    this->Register(0, "check", "Parse and validate input without writing output", 0, (TP_Callback)Parser_Check);
+    this->Register(0, "qmake-to-cmake", "Convert qmake input to CMake output", 0, (TP_Callback)Parser_QmakeToCmake);
+    this->Register(0, "cmake-to-qmake", "Convert CMake input to qmake output", 0, (TP_Callback)Parser_CmakeToQmake);
 }
 
 bool TerminalParser::Parse(int argc, char **argv)
@@ -192,6 +252,10 @@ bool TerminalParser::Parse(int argc, char **argv)
                 delete item;
                 if (result != TP_RESULT_OK)
                     return false;
+            } else
+            {
+                std::cerr << "Unknown option: --" << p.toStdString() << std::endl;
+                return false;
             }
         } else if (parameter.startsWith("-"))
         {
@@ -221,15 +285,27 @@ bool TerminalParser::Parse(int argc, char **argv)
                 delete item;
                 if (result != TP_RESULT_OK)
                     return false;
+            } else
+            {
+                std::cerr << "Unknown option: " << parameter.toStdString() << std::endl;
+                return false;
             }
         } else if (looking_for_input)
         {
             input_name = parameter;
+            if (Configuration::InputFile.isEmpty())
+                Configuration::InputFile = parameter;
             looking_for_input = false;
         } else if (looking_for_output)
         {
             output_name = parameter;
+            if (Configuration::OutputFile.isEmpty())
+                Configuration::OutputFile = parameter;
             looking_for_output = false;
+        } else
+        {
+            std::cerr << "Unexpected positional argument: " << parameter.toStdString() << std::endl;
+            return false;
         }
         curr++;
     }

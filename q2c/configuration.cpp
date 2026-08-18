@@ -15,8 +15,12 @@ bool Configuration::only_qt4 = false;
 bool Configuration::only_qt5 = false;
 bool Configuration::only_qt6 = false;
 bool Configuration::force = false;
+bool Configuration::dry_run = false;
+bool Configuration::check_only = false;
+bool Configuration::exit_after_parse = false;
+int Configuration::exit_code = 0;
+bool Configuration::direction_explicit = false;
 int Configuration::verbosity_level = 0;
 QString Configuration::InputFile = "";
 QString Configuration::OutputFile = "";
 bool Configuration::q2c = true;
-

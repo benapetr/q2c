@@ -24,6 +24,11 @@ class Configuration
         static QString InputFile;
         static QString OutputFile;
         static bool force;      // Single flag for force overwrite
+        static bool dry_run;    // Print generated output to stdout instead of writing it
+        static bool check_only; // Parse and validate input without writing output
+        static bool exit_after_parse;
+        static int exit_code;
+        static bool direction_explicit;
         static bool q2c;       // Direction of conversion (true = qmake to cmake, false = cmake to qmake)
 };
 
