@@ -139,12 +139,6 @@ int main(int argc, char *argv[])
         return TP_RESULT_FAIL;
     }
 
-    if (!Configuration::q2c)
-    {
-        Logs::ErrorLog("CMake to qmake conversion is not implemented yet");
-        return TP_RESULT_FAIL;
-    }
-
     // Load the file
     QFile file(Configuration::InputFile);
     if (!file.open(QIODevice::ReadOnly))

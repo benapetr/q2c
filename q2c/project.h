@@ -22,6 +22,7 @@ class Project
         Project();
         bool Load(QString text);
         bool ParseQmake(QString text);
+        bool ParseCmake(QString text);
         QString ToQmake();
         QString ToCmake();
         QList<CMakeOption> CMakeOptions;

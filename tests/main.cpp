@@ -13,7 +13,9 @@
 #include <QFile>
 #include <QTextStream>
 #include "buildmodel.h"
+#include "cmakeparser.h"
 #include "cmakegenerator.h"
+#include "qmakegenerator.h"
 #include "qmakeparser.h"
 
 class TestRunner
@@ -207,13 +209,55 @@ static void TestSubdirsFixture(TestRunner *runner)
     runner->Expect(cmake.contains("add_subdirectory(guiapp)"), "subdirs fixture generates guiapp");
 }
 
-static void TestCMakeFixtureIsReady(TestRunner *runner)
+static void TestCMakeFixtureParses(TestRunner *runner)
 {
     QString fixture = Fixture("cmake/basic/CMakeLists.txt");
     QString text = ReadFile(fixture);
     runner->Expect(!text.isEmpty(), "cmake fixture is readable");
     runner->Expect(text.contains("add_executable"), "cmake fixture contains a real target");
-    runner->Skip("CMake parser fixture is staged for Phase 4 parser tests");
+
+    BuildProject project;
+    CMakeParser parser;
+    runner->Expect(parser.Parse(text, &project, fixture), "cmake fixture parses");
+
+    const BuildTarget *target = project.PrimaryTarget();
+    runner->Expect(project.Name == "cmake_fixture", "CMake project() parses project name");
+    runner->Expect(project.CMakeMinimumVersion == "VERSION 3.16", "cmake_minimum_required parses version");
+    runner->Expect(target != nullptr, "cmake fixture has primary target");
+    if (target == nullptr)
+        return;
+
+    runner->Expect(target->Name == "cmake_fixture", "add_executable parses target name");
+    runner->Expect(target->Type == BuildTarget_Application, "add_executable maps to application target");
+    runner->Expect(Contains(target->Sources, "main.cpp"), "add_executable parses source");
+    runner->Expect(Contains(target->Sources, "mainwindow.cpp"), "add_executable parses second source");
+    runner->Expect(Contains(target->Sources, "extra.cpp"), "target_sources parses source");
+    runner->Expect(Contains(target->Headers, "mainwindow.h"), "add_executable classifies header");
+    runner->Expect(Contains(target->UiFiles, "mainwindow.ui"), "add_executable classifies ui file");
+    runner->Expect(Contains(target->ResourceFiles, "resources.qrc"), "add_executable classifies resource file");
+    runner->Expect(Contains(target->Defines, "HAS_CMAKE_FIXTURE"), "target_compile_definitions parses");
+    runner->Expect(Contains(target->IncludePaths, "include"), "target_include_directories parses");
+    runner->Expect(Contains(target->CompileOptions, "-Wall"), "target_compile_options parses");
+    runner->Expect(Contains(target->LinkOptions, "-pthread"), "target_link_options parses");
+    runner->Expect(Contains(target->TranslationFiles, "i18n/cmake_fixture.ts"), "qt_add_translations parses");
+    runner->Expect(Contains(target->Subdirectories, "plugin"), "add_subdirectory is attached to primary target");
+    runner->Expect(HasScopeWithSource(target, "WIN32", "win.cpp"), "if target_sources parses scoped source");
+    runner->Expect(HasScopeWithDefine(target, "WIN32", "WIN_ONLY"), "if target_compile_definitions parses scoped define");
+    runner->Expect(Contains(target->QtModules, "core"), "Qt imported Core target maps to qt module");
+    runner->Expect(Contains(target->QtModules, "widgets"), "Qt imported Widgets target maps to qt module");
+    runner->Expect(ContainsWarning(project, "set_target_properties"), "set_target_properties emits warning");
+
+    QMakeGenerator generator;
+    QString qmake = generator.Generate(project);
+    runner->Expect(qmake.contains("TARGET = cmake_fixture"), "generated qmake contains target");
+    runner->Expect(qmake.contains("QT += core widgets"), "generated qmake contains Qt modules");
+    runner->Expect(qmake.contains("SOURCES += main.cpp mainwindow.cpp"), "generated qmake contains sources");
+    runner->Expect(qmake.contains("HEADERS += mainwindow.h"), "generated qmake contains headers");
+    runner->Expect(qmake.contains("FORMS += mainwindow.ui"), "generated qmake contains forms");
+    runner->Expect(qmake.contains("RESOURCES += resources.qrc"), "generated qmake contains resources");
+    runner->Expect(qmake.contains("TRANSLATIONS += i18n/cmake_fixture.ts"), "generated qmake contains translations");
+    runner->Expect(qmake.contains("QMAKE_CXXFLAGS += -Wall"), "generated qmake contains compile options");
+    runner->Expect(qmake.contains("QMAKE_LFLAGS += -pthread"), "generated qmake contains link options");
 }
 
 int main(int argc, char *argv[])
@@ -225,6 +269,6 @@ int main(int argc, char *argv[])
     TestPhase3QMakeFixture(&runner);
     TestLibraryFixture(&runner);
     TestSubdirsFixture(&runner);
-    TestCMakeFixtureIsReady(&runner);
+    TestCMakeFixtureParses(&runner);
     return runner.Finish();
 }

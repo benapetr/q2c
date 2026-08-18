@@ -9,6 +9,7 @@
 //GNU General Public License for more details.
 
 #include "project.h"
+#include "cmakeparser.h"
 #include "configuration.h"
 #include "qmakegenerator.h"
 #include "qmakeparser.h"
@@ -34,13 +35,25 @@ Project::Project()
 
 bool Project::Load(QString text)
 {
-    return this->ParseQmake(text);
+    if (Configuration::q2c)
+        return this->ParseQmake(text);
+    return this->ParseCmake(text);
 }
 
 bool Project::ParseQmake(QString text)
 {
     QMakeParser parser;
     if (!parser.Parse(text, &this->Model, Configuration::InputFile, this->CMakeMinumumVersion))
+        return false;
+
+    this->ProjectName = this->Model.Name;
+    return true;
+}
+
+bool Project::ParseCmake(QString text)
+{
+    CMakeParser parser;
+    if (!parser.Parse(text, &this->Model, Configuration::InputFile))
         return false;
 
     this->ProjectName = this->Model.Name;

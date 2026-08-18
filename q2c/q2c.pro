@@ -23,6 +23,7 @@ SOURCES += main.cpp \
     generic.cpp \
     buildmodel.cpp \
     qmakeparser.cpp \
+    cmakeparser.cpp \
     cmakegenerator.cpp \
     qmakegenerator.cpp
 
@@ -34,5 +35,6 @@ HEADERS += \
     generic.h \
     buildmodel.h \
     qmakeparser.h \
+    cmakeparser.h \
     cmakegenerator.h \
     qmakegenerator.h

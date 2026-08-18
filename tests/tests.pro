@@ -12,6 +12,7 @@ DEFINES += TEST_FIXTURE_DIR=\\\"$$PWD/fixtures\\\"
 
 SOURCES += main.cpp \
     ../q2c/buildmodel.cpp \
+    ../q2c/cmakeparser.cpp \
     ../q2c/cmakegenerator.cpp \
     ../q2c/generic.cpp \
     ../q2c/logs.cpp \
@@ -21,6 +22,7 @@ SOURCES += main.cpp \
 
 HEADERS += \
     ../q2c/buildmodel.h \
+    ../q2c/cmakeparser.h \
     ../q2c/cmakegenerator.h \
     ../q2c/generic.h \
     ../q2c/logs.h \

@@ -30,8 +30,8 @@ projects and checks the generated output.
     make
     ./q2c_tests
 
-The CMake fixture is present for the future CMake parser work and is currently
-reported as skipped by the test runner.
+The CMake fixture is parsed by the test runner and used to check CMake-to-qmake
+conversion behavior.
 
 
 How to install
@@ -52,8 +52,8 @@ This will automatically detect input and output file, you can also use
 By default q2c detects the conversion direction from the input file name:
 
 * `.pro` and `.pri` files are treated as qmake input and converted to CMake.
-* `CMakeLists.txt` and `.cmake` files are treated as CMake input. This direction
-  is detected, but CMake to qmake conversion is not implemented yet.
+* `CMakeLists.txt` and `.cmake` files are treated as CMake input and converted
+  to qmake.
 
 Useful options:
 
