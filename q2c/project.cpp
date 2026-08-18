@@ -22,6 +22,10 @@ Project::Project()
                               << "INCLUDEPATH" << "LIBS" << "FORMS" << "RESOURCES" << "SUBDIRS";
     this->Version = QtVersion_All;
     this->IsSubdirsProject = false;
+    this->TargetType = BuildTarget_Application;
+    this->TemplateName = "app";
+    this->CurrentLineNumber = 0;
+    this->TargetLine = 0;
     if (Configuration::only_qt4)
     {
         this->Version = QtVersion_Qt4;
@@ -35,6 +39,7 @@ Project::Project()
     }
     this->RemainingRequiredKeywords = this->RequiredKeywords;
     this->Modules << "core";
+    this->RefreshModel();
 }
 
 QString generateCMakeOptions(QList<CMakeOption> *options)
@@ -52,6 +57,11 @@ bool Project::Load(QString text)
     return this->ParseQmake(text);
 }
 
+const BuildProject &Project::GetModel() const
+{
+    return this->Model;
+}
+
 bool Project::ParseQmake(QString text)
 {
     ParserState state = ParserState_LookingForKeyword;
@@ -62,6 +72,7 @@ bool Project::ParseQmake(QString text)
     
     for (int i = 0; i < lines.size(); i++)
     {
+        this->CurrentLineNumber = i + 1;
         QString line = lines[i];
         // Trim leading spaces
         while (line.startsWith(" "))
@@ -129,13 +140,96 @@ bool Project::ParseQmake(QString text)
         }
         return false;
     }
+
+    this->RefreshModel();
     return true;
+}
+
+BuildTargetType Project::TargetTypeFromTemplate(QString value)
+{
+    value = value.trimmed().toLower();
+    if (value == "app")
+        return BuildTarget_Application;
+    if (value == "lib")
+        return BuildTarget_Library;
+    if (value == "subdirs")
+        return BuildTarget_Subdirs;
+    return BuildTarget_Unknown;
+}
+
+BuildTargetType Project::TargetTypeFromConfig(BuildTargetType current_type) const
+{
+    if (this->Config.contains("testcase"))
+        return BuildTarget_Test;
+    if (this->Config.contains("plugin"))
+        return BuildTarget_Plugin;
+    return current_type;
+}
+
+BuildTarget *Project::PrimaryBuildTarget()
+{
+    return this->Model.EnsurePrimaryTarget();
+}
+
+const BuildTarget *Project::PrimaryBuildTarget() const
+{
+    return this->Model.PrimaryTarget();
+}
+
+void Project::RefreshModel()
+{
+    this->Model.Clear();
+    this->Model.Name = this->ProjectName;
+    this->Model.CMakeMinimumVersion = this->CMakeMinumumVersion;
+    this->Model.GlobalConfig = this->Config;
+    this->Model.GlobalQtModules = this->Modules;
+
+    BuildTarget *target = this->Model.EnsurePrimaryTarget();
+    target->Name = this->ProjectName;
+    if (target->Name.isEmpty() && this->IsSubdirsProject)
+        target->Name = "MainProject";
+    target->Type = this->TargetTypeFromConfig(this->TargetType);
+    target->Location = BuildSourceLocation(Configuration::InputFile, this->TargetLine);
+    target->Sources = this->Sources;
+    target->Headers = this->Headers;
+    target->UiFiles = this->UIFiles;
+    target->ResourceFiles = this->ResourceFiles;
+    target->QtModules = this->Modules;
+    target->Config = this->Config;
+    target->Defines = this->Defines;
+    target->IncludePaths = this->IncludePaths;
+    target->Libraries = this->Libraries;
+    target->Subdirectories = this->Subdirectories;
+
+    foreach (const ConditionalBlock &block, this->ConditionalBlocks)
+    {
+        BuildConditionalScope scope;
+        scope.Condition = block.condition;
+        scope.Location = BuildSourceLocation(Configuration::InputFile, block.line);
+        scope.Sources = block.Sources;
+        scope.Headers = block.Headers;
+        scope.Defines = block.Defines;
+        scope.IncludePaths = block.IncludePaths;
+        scope.Libraries = block.Libraries;
+        scope.Config = block.Config;
+        target->ConditionalScopes.append(scope);
+    }
+
+    foreach (QString subdir, this->Subdirectories)
+    {
+        BuildTarget subtarget;
+        subtarget.Name = subdir;
+        subtarget.Type = BuildTarget_Subdirs;
+        subtarget.Location = BuildSourceLocation(Configuration::InputFile, 0);
+        this->Model.Targets.append(subtarget);
+    }
 }
 
 bool Project::ProcessScope(QString line, QStringList &lines, int &currentLine)
 {
     ConditionalBlock block;
     QString condition;
+    block.line = currentLine + 1;
     
     if (line.startsWith("win32:"))
     {
@@ -240,16 +334,21 @@ bool Project::EvaluateCondition(QString condition)
 QString Project::ProcessPlatformSpecific()
 {
     QString result;
-    foreach (const ConditionalBlock &block, ConditionalBlocks)
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    if (target == nullptr)
+        return result;
+    QString target_name = target->Name;
+
+    foreach (const BuildConditionalScope &block, target->ConditionalScopes)
     {
-        if (!block.condition.isEmpty())
+        if (!block.Condition.isEmpty())
         {
-            result += "\nif(" + block.condition + ")\n";
+            result += "\nif(" + block.Condition + ")\n";
             
             // Add platform-specific sources
             if (!block.Sources.isEmpty())
             {
-                result += "    target_sources(${PROJECT_NAME} PRIVATE\n";
+                result += "    target_sources(" + target_name + " PRIVATE\n";
                 foreach (const QString &source, block.Sources)
                     result += "        " + source + "\n";
                 result += "    )\n";
@@ -267,11 +366,11 @@ QString Project::ProcessPlatformSpecific()
             foreach (const QString &lib, block.Libraries)
             {
                 if (lib.startsWith("-l"))
-                    result += "    target_link_libraries(${PROJECT_NAME} " + lib.mid(2) + ")\n";
+                    result += "    target_link_libraries(" + target_name + " " + lib.mid(2) + ")\n";
                 else if (lib.startsWith("-L"))
                     result += "    link_directories(" + lib.mid(2) + ")\n";
                 else
-                    result += "    target_link_libraries(${PROJECT_NAME} " + lib + ")\n";
+                    result += "    target_link_libraries(" + target_name + " " + lib + ")\n";
             }
             
             result += "endif()\n";
@@ -282,30 +381,37 @@ QString Project::ProcessPlatformSpecific()
 
 QString Project::ToQmake()
 {
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QString target_name = target != nullptr ? target->Name : this->ProjectName;
+
     QString source = "#-----------------------------------------------------------------\n";
     source += "# Project converted from cmake file using q2c\n";
     source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
     source += "#-----------------------------------------------------------------\n";
-    source += "TARGET = " + ProjectName;
+    source += "TARGET = " + target_name;
     return source;
 }
 
 QString Project::ToCmake()
 {
+    this->RefreshModel();
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QString target_name = target != nullptr ? target->Name : this->ProjectName;
+
     QString source = "#-----------------------------------------------------------------\n";
     source += "# Project converted from qmake file using q2c\n";
     source += "# https://github.com/benapetr/q2c at " + QDateTime::currentDateTime().toString() + "\n";
     source += "#-----------------------------------------------------------------\n";
-    source += "cmake_minimum_required (" + this->CMakeMinumumVersion + ")\n";
+    source += "cmake_minimum_required (" + this->Model.CMakeMinimumVersion + ")\n";
 
-    if (this->IsSubdirsProject)
-        source += "project(" + (ProjectName.isEmpty() ? "MainProject" : ProjectName) + ")\n";
+    if (target != nullptr && target->Type == BuildTarget_Subdirs)
+        source += "project(" + target_name + ")\n";
     else
-        source += "project(" + ProjectName + ")\n";
+        source += "project(" + target_name + ")\n";
 
     source += generateCMakeOptions(&this->CMakeOptions);
 
-    if (this->IsSubdirsProject)
+    if (target != nullptr && target->Type == BuildTarget_Subdirs)
     {
         source += "\n";
         source += ProcessSubdirsInCMake();
@@ -322,19 +428,19 @@ QString Project::ToCmake()
     source += ProcessIncludePaths();
 
     // Sources, headers and so on
-    if (!this->Sources.isEmpty())
+    if (target != nullptr && !target->Sources.isEmpty())
     {
-        source += "set(" + this->ProjectName + "_SOURCES";
-        foreach (QString src, this->Sources)
+        source += "set(" + target_name + "_SOURCES";
+        foreach (QString src, target->Sources)
         {
             source += " \"" + src + "\"";
         }
         source += ")\n";
     }
-    if (!this->Headers.isEmpty())
+    if (target != nullptr && !target->Headers.isEmpty())
     {
-        source += "set(" + this->ProjectName + "_HEADERS";
-        foreach (QString src, this->Headers)
+        source += "set(" + target_name + "_HEADERS";
+        foreach (QString src, target->Headers)
         {
             source += " \"" + src + "\"";
         }
@@ -344,15 +450,19 @@ QString Project::ToCmake()
     // Qt libs
     source += this->GetCMakeDefaultQtLibs();
 
-    source += "add_executable(" + this->ProjectName;
-    if (!this->Sources.isEmpty())
-        source += " ${" + this->ProjectName + "_SOURCES}";
-    if (!this->Headers.isEmpty())
-        source += " ${" + this->ProjectName + "_HEADERS}";
+    if (target != nullptr && (target->Type == BuildTarget_Library || target->Type == BuildTarget_Plugin))
+        source += "add_library(" + target_name;
+    else
+        source += "add_executable(" + target_name;
+
+    if (target != nullptr && !target->Sources.isEmpty())
+        source += " ${" + target_name + "_SOURCES}";
+    if (target != nullptr && !target->Headers.isEmpty())
+        source += " ${" + target_name + "_HEADERS}";
     source += ")\n";
 
-    if (!this->Headers.isEmpty())
-        source += "target_sources(" + this->ProjectName + " PRIVATE ${" + this->ProjectName + "_HEADERS_MOC})\n";
+    if (target != nullptr && !target->Headers.isEmpty())
+        source += "target_sources(" + target_name + " PRIVATE ${" + target_name + "_HEADERS_MOC})\n";
 
     // Process platform-specific code after the target exists.
     source += ProcessPlatformSpecific();
@@ -375,9 +485,12 @@ QString Project::ToCmake()
 QString Project::ProcessSubdirsInCMake()
 {
     QString result;
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QList<QString> qt_modules = target != nullptr ? target->QtModules : this->Modules;
+    QList<QString> subdirectories = target != nullptr ? target->Subdirectories : this->Subdirectories;
     
     // First, check if we have any Qt-wide settings that should apply to all subprojects
-    if (!this->Modules.isEmpty())
+    if (!qt_modules.isEmpty())
     {
         result += "# Global Qt settings that apply to all subprojects\n";
         if (this->Version == QtVersion_All)
@@ -389,7 +502,7 @@ QString Project::ProcessSubdirsInCMake()
     }
 
     result += "# Add all subprojects\n";
-    foreach (QString subdir, this->Subdirectories)
+    foreach (QString subdir, subdirectories)
     {
         result += "add_subdirectory(" + subdir + ")\n";
     }
@@ -400,11 +513,13 @@ QString Project::ProcessSubdirsInCMake()
 QString Project::ProcessUIFiles()
 {
     QString result;
-    if (!this->UIFiles.isEmpty())
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    if (target != nullptr && !target->UiFiles.isEmpty())
     {
+        QString target_name = target->Name;
         result += "\n# UI files\n";
-        result += "set(" + this->ProjectName + "_UI_FILES";
-        foreach (QString ui, this->UIFiles)
+        result += "set(" + target_name + "_UI_FILES";
+        foreach (QString ui, target->UiFiles)
         {
             result += " \"" + ui + "\"";
         }
@@ -412,27 +527,27 @@ QString Project::ProcessUIFiles()
         
         if (this->Version == QtVersion_Qt6)
         {
-            result += "qt6_wrap_ui(" + this->ProjectName + "_UI_HEADERS ${" + this->ProjectName + "_UI_FILES})\n";
+            result += "qt6_wrap_ui(" + target_name + "_UI_HEADERS ${" + target_name + "_UI_FILES})\n";
         }
         else if (this->Version == QtVersion_Qt5)
         {
-            result += "qt5_wrap_ui(" + this->ProjectName + "_UI_HEADERS ${" + this->ProjectName + "_UI_FILES})\n";
+            result += "qt5_wrap_ui(" + target_name + "_UI_HEADERS ${" + target_name + "_UI_FILES})\n";
         }
         else if (this->Version == QtVersion_Qt4)
         {
-            result += "qt4_wrap_ui(" + this->ProjectName + "_UI_HEADERS ${" + this->ProjectName + "_UI_FILES})\n";
+            result += "qt4_wrap_ui(" + target_name + "_UI_HEADERS ${" + target_name + "_UI_FILES})\n";
         }
         else
         {
             result += "IF (QT5BUILD)\n";
-            result += Generic::Indent("qt5_wrap_ui(" + this->ProjectName + "_UI_HEADERS ${" + this->ProjectName + "_UI_FILES})\n");
+            result += Generic::Indent("qt5_wrap_ui(" + target_name + "_UI_HEADERS ${" + target_name + "_UI_FILES})\n");
             result += "ELSE()\n";
-            result += Generic::Indent("qt4_wrap_ui(" + this->ProjectName + "_UI_HEADERS ${" + this->ProjectName + "_UI_FILES})\n");
+            result += Generic::Indent("qt4_wrap_ui(" + target_name + "_UI_HEADERS ${" + target_name + "_UI_FILES})\n");
             result += "ENDIF()\n";
         }
         
         // Add generated headers to target
-        result += "target_sources(" + this->ProjectName + " PRIVATE ${" + this->ProjectName + "_UI_HEADERS})\n";
+        result += "target_sources(" + target_name + " PRIVATE ${" + target_name + "_UI_HEADERS})\n";
     }
     return result;
 }
@@ -440,11 +555,13 @@ QString Project::ProcessUIFiles()
 QString Project::ProcessResources()
 {
     QString result;
-    if (!this->ResourceFiles.isEmpty())
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    if (target != nullptr && !target->ResourceFiles.isEmpty())
     {
+        QString target_name = target->Name;
         result += "\n# Resource files\n";
-        result += "set(" + this->ProjectName + "_RESOURCE_FILES";
-        foreach (QString qrc, this->ResourceFiles)
+        result += "set(" + target_name + "_RESOURCE_FILES";
+        foreach (QString qrc, target->ResourceFiles)
         {
             result += " \"" + qrc + "\"";
         }
@@ -452,27 +569,27 @@ QString Project::ProcessResources()
         
         if (this->Version == QtVersion_Qt6)
         {
-            result += "qt6_add_resources(" + this->ProjectName + "_RESOURCES ${" + this->ProjectName + "_RESOURCE_FILES})\n";
+            result += "qt6_add_resources(" + target_name + "_RESOURCES ${" + target_name + "_RESOURCE_FILES})\n";
         }
         else if (this->Version == QtVersion_Qt5)
         {
-            result += "qt5_add_resources(" + this->ProjectName + "_RESOURCES ${" + this->ProjectName + "_RESOURCE_FILES})\n";
+            result += "qt5_add_resources(" + target_name + "_RESOURCES ${" + target_name + "_RESOURCE_FILES})\n";
         }
         else if (this->Version == QtVersion_Qt4)
         {
-            result += "qt4_add_resources(" + this->ProjectName + "_RESOURCES ${" + this->ProjectName + "_RESOURCE_FILES})\n";
+            result += "qt4_add_resources(" + target_name + "_RESOURCES ${" + target_name + "_RESOURCE_FILES})\n";
         }
         else
         {
             result += "IF (QT5BUILD)\n";
-            result += Generic::Indent("qt5_add_resources(" + this->ProjectName + "_RESOURCES ${" + this->ProjectName + "_RESOURCE_FILES})\n");
+            result += Generic::Indent("qt5_add_resources(" + target_name + "_RESOURCES ${" + target_name + "_RESOURCE_FILES})\n");
             result += "ELSE()\n";
-            result += Generic::Indent("qt4_add_resources(" + this->ProjectName + "_RESOURCES ${" + this->ProjectName + "_RESOURCE_FILES})\n");
+            result += Generic::Indent("qt4_add_resources(" + target_name + "_RESOURCES ${" + target_name + "_RESOURCE_FILES})\n");
             result += "ENDIF()\n";
         }
         
         // Add generated resource files to target
-        result += "target_sources(" + this->ProjectName + " PRIVATE ${" + this->ProjectName + "_RESOURCES})\n";
+        result += "target_sources(" + target_name + " PRIVATE ${" + target_name + "_RESOURCES})\n";
     }
     return result;
 }
@@ -480,7 +597,10 @@ QString Project::ProcessResources()
 QString Project::ProcessConfigOptions()
 {
     QString result;
-    foreach (QString config, this->Config)
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QList<QString> config_list = target != nullptr ? target->Config : this->Config;
+
+    foreach (QString config, config_list)
     {
         if (config == "c++11")
             result += "set(CMAKE_CXX_STANDARD 11)\n";
@@ -500,9 +620,12 @@ QString Project::ProcessConfigOptions()
 QString Project::ProcessDefines()
 {
     QString result;
-    if (!this->Defines.isEmpty())
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QList<QString> defines = target != nullptr ? target->Defines : this->Defines;
+
+    if (!defines.isEmpty())
     {
-        foreach (QString define, this->Defines)
+        foreach (QString define, defines)
         {
             result += "add_definitions(-D" + define + ")\n";
         }
@@ -513,9 +636,12 @@ QString Project::ProcessDefines()
 QString Project::ProcessIncludePaths()
 {
     QString result;
-    if (!this->IncludePaths.isEmpty())
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QList<QString> include_paths = target != nullptr ? target->IncludePaths : this->IncludePaths;
+
+    if (!include_paths.isEmpty())
     {
-        foreach (QString path, this->IncludePaths)
+        foreach (QString path, include_paths)
         {
             result += "include_directories(" + path + ")\n";
         }
@@ -526,17 +652,21 @@ QString Project::ProcessIncludePaths()
 QString Project::ProcessLibs()
 {
     QString result;
-    if (!this->Libraries.isEmpty())
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QString target_name = target != nullptr ? target->Name : this->ProjectName;
+    QList<QString> libraries = target != nullptr ? target->Libraries : this->Libraries;
+
+    if (!libraries.isEmpty())
     {
-        foreach (QString lib, this->Libraries)
+        foreach (QString lib, libraries)
         {
             // Handle -l and -L flags
             if (lib.startsWith("-l"))
-                result += "target_link_libraries(" + this->ProjectName + " " + lib.mid(2) + ")\n";
+                result += "target_link_libraries(" + target_name + " " + lib.mid(2) + ")\n";
             else if (lib.startsWith("-L"))
                 result += "link_directories(" + lib.mid(2) + ")\n";
             else
-                result += "target_link_libraries(" + this->ProjectName + " " + lib + ")\n";
+                result += "target_link_libraries(" + target_name + " " + lib + ")\n";
         }
     }
     return result;
@@ -614,10 +744,13 @@ bool Project::ProcessSimpleKeyword(QString word, QString line)
         target_name = target_name.trimmed();
         target_name = target_name.replace(" ", "_");
         this->ProjectName = target_name;
+        this->TargetLine = this->CurrentLineNumber;
     }
     else if (word == "TEMPLATE")
     {
         QString value = line.mid(line.indexOf("=") + 1).trimmed();
+        this->TemplateName = value;
+        this->TargetType = TargetTypeFromTemplate(value);
         if (value == "subdirs")
         {
             this->IsSubdirsProject = true;
@@ -692,10 +825,14 @@ bool Project::ProcessComplexKeyword(QString word, QString line, QString data_buf
 QString Project::GetCMakeDefaultQtLibs()
 {
     QString result;
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QList<QString> config = target != nullptr ? target->Config : this->Config;
+    QList<QString> headers = target != nullptr ? target->Headers : this->Headers;
+    QString target_name = target != nullptr ? target->Name : this->ProjectName;
 
-    bool has_cxx_standard = this->Config.contains("c++11") ||
-                            this->Config.contains("c++14") ||
-                            this->Config.contains("c++17");
+    bool has_cxx_standard = config.contains("c++11") ||
+                            config.contains("c++14") ||
+                            config.contains("c++17");
     if (!has_cxx_standard)
     {
         // Set C++ standard - Qt6 requires C++17
@@ -726,26 +863,26 @@ QString Project::GetCMakeDefaultQtLibs()
     }
 
     // Add MOC headers generation
-    if (!this->Headers.isEmpty())
+    if (!headers.isEmpty())
     {
         if (this->Version == QtVersion_Qt6)
         {
-            result += "qt6_wrap_cpp(" + this->ProjectName + "_HEADERS_MOC ${" + this->ProjectName + "_HEADERS})\n";
+            result += "qt6_wrap_cpp(" + target_name + "_HEADERS_MOC ${" + target_name + "_HEADERS})\n";
         }
         else if (this->Version == QtVersion_Qt5)
         {
-            result += "qt5_wrap_cpp(" + this->ProjectName + "_HEADERS_MOC ${" + this->ProjectName + "_HEADERS})\n";
+            result += "qt5_wrap_cpp(" + target_name + "_HEADERS_MOC ${" + target_name + "_HEADERS})\n";
         }
         else if (this->Version == QtVersion_Qt4)
         {
-            result += "qt4_wrap_cpp(" + this->ProjectName + "_HEADERS_MOC ${" + this->ProjectName + "_HEADERS})\n";
+            result += "qt4_wrap_cpp(" + target_name + "_HEADERS_MOC ${" + target_name + "_HEADERS})\n";
         }
         else
         {
             result += "IF (QT5BUILD)\n";
-            result += Generic::Indent("qt5_wrap_cpp(" + this->ProjectName + "_HEADERS_MOC ${" + this->ProjectName + "_HEADERS})\n");
+            result += Generic::Indent("qt5_wrap_cpp(" + target_name + "_HEADERS_MOC ${" + target_name + "_HEADERS})\n");
             result += "ELSE()\n";
-            result += Generic::Indent("qt4_wrap_cpp(" + this->ProjectName + "_HEADERS_MOC ${" + this->ProjectName + "_HEADERS})\n");
+            result += Generic::Indent("qt4_wrap_cpp(" + target_name + "_HEADERS_MOC ${" + target_name + "_HEADERS})\n");
             result += "ENDIF()\n";
         }
     }
@@ -765,12 +902,14 @@ QString Project::GetCMakeQt5Libs()
 {
     QString result;
     QString components = "COMPONENTS";
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QList<QString> modules = target != nullptr ? target->QtModules : this->Modules;
 
     // Always include Core if no modules specified
-    if (this->Modules.isEmpty())
-        this->Modules << "core";
+    if (modules.isEmpty())
+        modules << "core";
 
-    foreach (QString module, this->Modules)
+    foreach (QString module, modules)
     {
         QString capitalModule = Generic::CapitalFirst(module);
         if (module == "webkit")
@@ -788,12 +927,14 @@ QString Project::GetCMakeQt6Libs()
 {
     QString result;
     QString components = "COMPONENTS";
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QList<QString> modules = target != nullptr ? target->QtModules : this->Modules;
 
     // Always include Core if no modules specified
-    if (this->Modules.isEmpty())
-        this->Modules << "core";
+    if (modules.isEmpty())
+        modules << "core";
 
-    foreach (QString module, this->Modules)
+    foreach (QString module, modules)
     {
         QString capitalModule = Generic::CapitalFirst(module);
         if (module == "webkit")
@@ -809,21 +950,25 @@ QString Project::GetCMakeQt6Libs()
 
 QString Project::GetCMakeQtModules()
 {
-    if (this->Version == QtVersion_Qt4 || this->Modules.isEmpty())
+    const BuildTarget *target = this->PrimaryBuildTarget();
+    QString target_name = target != nullptr ? target->Name : this->ProjectName;
+    QList<QString> modules = target != nullptr ? target->QtModules : this->Modules;
+
+    if (this->Version == QtVersion_Qt4 || modules.isEmpty())
         return "";
 
     QString result;
     if (this->Version == QtVersion_Qt6)
     {
-        result += "target_link_libraries(" + this->ProjectName + " PRIVATE";
-        foreach (QString module, this->Modules)
+        result += "target_link_libraries(" + target_name + " PRIVATE";
+        foreach (QString module, modules)
             result += " Qt6::" + Generic::CapitalFirst(module);
         result += ")\n";
     }
     else if (this->Version == QtVersion_Qt5)
     {
-        result += "target_link_libraries(" + this->ProjectName + " PRIVATE";
-        foreach (QString module, this->Modules)
+        result += "target_link_libraries(" + target_name + " PRIVATE";
+        foreach (QString module, modules)
             result += " Qt5::" + Generic::CapitalFirst(module);
         result += ")\n";
     }
@@ -831,12 +976,12 @@ QString Project::GetCMakeQtModules()
     {
         // Handle auto-detection mode
         result += "IF (QT5BUILD)\n";
-        result += Generic::Indent("target_link_libraries(" + this->ProjectName + " PRIVATE");
-        foreach (QString module, this->Modules)
+        result += Generic::Indent("target_link_libraries(" + target_name + " PRIVATE");
+        foreach (QString module, modules)
             result += " Qt5::" + Generic::CapitalFirst(module);
         result += ")\n";
         result += "ELSE()\n";
-        result += Generic::Indent("target_link_libraries(" + this->ProjectName + " ${QT_LIBRARIES})\n");
+        result += Generic::Indent("target_link_libraries(" + target_name + " ${QT_LIBRARIES})\n");
         result += "ENDIF()\n";
     }
     return result;

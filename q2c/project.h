@@ -15,6 +15,7 @@
 #include <QList>
 #include <QHash>
 #include <QDateTime>
+#include "buildmodel.h"
 #include "logs.h"
 
 class CMakeOption
@@ -52,11 +53,17 @@ class Project
         QtVersion Version;
         QString ProjectName;
         QString CMakeMinumumVersion;
+        const BuildProject &GetModel() const;
     private:
         static QString FinishCut(QString text);
         bool ParseStandardQMakeList(QList<QString> *list, QString line, QString text);
         bool ProcessSimpleKeyword(QString word, QString line);
         bool ProcessComplexKeyword(QString word, QString line, QString data_buffer);
+        void RefreshModel();
+        BuildTargetType TargetTypeFromTemplate(QString value);
+        BuildTargetType TargetTypeFromConfig(BuildTargetType current_type) const;
+        BuildTarget *PrimaryBuildTarget();
+        const BuildTarget *PrimaryBuildTarget() const;
         QString GetCMakeDefaultQtLibs();
         QString GetCMakeQt4Libs();
         QString GetCMakeQt5Libs();
@@ -86,7 +93,12 @@ class Project
         QList<QString> UIFiles;
         QList<QString> ResourceFiles;
         QList<QString> Subdirectories;
+        BuildTargetType TargetType;
+        QString TemplateName;
+        int CurrentLineNumber;
+        int TargetLine;
         bool IsSubdirsProject;
+        BuildProject Model;
 
         QString ParseCondition(QString condition);
         bool ProcessScope(QString line, QStringList &lines, int &currentLine);
@@ -97,6 +109,7 @@ class Project
         struct ConditionalBlock {
             QString condition;
             bool active;
+            int line;
             QList<QString> Sources;
             QList<QString> Headers;
             QList<QString> Defines;
