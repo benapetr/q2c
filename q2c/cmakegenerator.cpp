@@ -19,6 +19,14 @@ static QString CMakeQuote(QString value)
     return value;
 }
 
+static QString CMakeIndentedList(const QList<QString> &values)
+{
+    QString result;
+    foreach (QString value, values)
+        result += "    " + CMakeQuote(value) + "\n";
+    return result;
+}
+
 CMakeGenerator::CMakeGenerator(CMakeQtVersion version)
 {
     this->Version = version;
@@ -50,27 +58,22 @@ QString CMakeGenerator::Generate(const BuildProject &project, const QList<CMakeO
         return source;
 
     source += this->GenerateConfigOptions(*target);
-    source += this->GenerateDefines(*target);
-    source += this->GenerateIncludePaths(*target);
 
     if (!target->Sources.isEmpty())
-    {
-        source += "set(" + target_name + "_SOURCES";
-        foreach (QString src, target->Sources)
-            source += " \"" + src + "\"";
-        source += ")\n";
-    }
+        source += this->GenerateFileSet(target_name + "_SOURCES", target->Sources);
     if (!target->Headers.isEmpty())
-    {
-        source += "set(" + target_name + "_HEADERS";
-        foreach (QString src, target->Headers)
-            source += " \"" + src + "\"";
-        source += ")\n";
-    }
+        source += this->GenerateFileSet(target_name + "_HEADERS", target->Headers);
+    if (!target->UiFiles.isEmpty())
+        source += this->GenerateFileSet(target_name + "_UI_FILES", target->UiFiles);
+    if (!target->ResourceFiles.isEmpty())
+        source += this->GenerateFileSet(target_name + "_RESOURCE_FILES", target->ResourceFiles);
 
     source += this->GenerateDefaultQtLibs(*target);
+    source += this->GenerateQtAutomation(*target);
 
-    if (target->Type == BuildTarget_Library || target->Type == BuildTarget_Plugin)
+    if (target->Type == BuildTarget_Plugin)
+        source += "add_library(" + target_name + " MODULE";
+    else if (target->Type == BuildTarget_Library)
         source += "add_library(" + target_name;
     else
         source += "add_executable(" + target_name;
@@ -79,11 +82,24 @@ QString CMakeGenerator::Generate(const BuildProject &project, const QList<CMakeO
         source += " ${" + target_name + "_SOURCES}";
     if (!target->Headers.isEmpty())
         source += " ${" + target_name + "_HEADERS}";
+    if (!target->UiFiles.isEmpty())
+        source += " ${" + target_name + "_UI_FILES}";
+    if (!target->ResourceFiles.isEmpty())
+        source += " ${" + target_name + "_RESOURCE_FILES}";
     source += ")\n";
 
-    if (!target->Headers.isEmpty())
+    if (!target->Headers.isEmpty() && this->Version == CMakeQtVersion_Qt4)
         source += "target_sources(" + target_name + " PRIVATE ${" + target_name + "_HEADERS_MOC})\n";
+    else if (!target->Headers.isEmpty() && this->Version == CMakeQtVersion_All)
+    {
+        source += "IF (QT5BUILD)\n";
+        source += "ELSE()\n";
+        source += Generic::Indent("target_sources(" + target_name + " PRIVATE ${" + target_name + "_HEADERS_MOC})\n");
+        source += "ENDIF()\n";
+    }
 
+    source += this->GenerateDefines(*target);
+    source += this->GenerateIncludePaths(*target);
     source += this->GenerateConditionalScopes(*target);
     source += this->GenerateUIFiles(*target);
     source += this->GenerateResources(*target);
@@ -102,6 +118,15 @@ QString CMakeGenerator::GenerateOptions(const QList<CMakeOption> &options)
     QString result;
     foreach (CMakeOption option, options)
         result += "option(" + option.Name + " \"" + option.Description + "\" " + option.Default + ")\n";
+    return result;
+}
+
+QString CMakeGenerator::GenerateFileSet(QString variable, const QList<QString> &files)
+{
+    QString result;
+    result += "set(" + variable + "\n";
+    result += CMakeIndentedList(files);
+    result += ")\n";
     return result;
 }
 
@@ -136,14 +161,21 @@ QString CMakeGenerator::GenerateConditionalScopes(const BuildTarget &target)
         if (!block.Sources.isEmpty())
         {
             result += "    target_sources(" + target.Name + " PRIVATE\n";
-        foreach (const QString &source, block.Sources)
+            foreach (const QString &source, block.Sources)
                 result += "        " + CMakeQuote(source) + "\n";
             result += "    )\n";
         }
+        if (!block.Headers.isEmpty())
+        {
+            result += "    target_sources(" + target.Name + " PRIVATE\n";
+            foreach (const QString &header, block.Headers)
+                result += "        " + CMakeQuote(header) + "\n";
+            result += "    )\n";
+        }
         foreach (const QString &define, block.Defines)
-            result += "    add_definitions(-D" + define + ")\n";
+            result += "    target_compile_definitions(" + target.Name + " PRIVATE " + define + ")\n";
         foreach (const QString &include, block.IncludePaths)
-            result += "    include_directories(" + CMakeQuote(include) + ")\n";
+            result += "    target_include_directories(" + target.Name + " PRIVATE " + CMakeQuote(include) + ")\n";
         foreach (const QString &option, block.CompileOptions)
             result += "    target_compile_options(" + target.Name + " PRIVATE " + option + ")\n";
         foreach (const QString &option, block.LinkOptions)
@@ -153,16 +185,16 @@ QString CMakeGenerator::GenerateConditionalScopes(const BuildTarget &target)
             QString lib = block.Libraries[i];
             if (lib == "-framework" && i + 1 < block.Libraries.size())
             {
-                result += "    target_link_libraries(" + target.Name + " \"-framework " + block.Libraries[i + 1] + "\")\n";
+            result += "    target_link_libraries(" + target.Name + " PRIVATE \"-framework " + block.Libraries[i + 1] + "\")\n";
                 i++;
                 continue;
             }
             if (lib.startsWith("-l"))
-                result += "    target_link_libraries(" + target.Name + " " + lib.mid(2) + ")\n";
+                result += "    target_link_libraries(" + target.Name + " PRIVATE " + lib.mid(2) + ")\n";
             else if (lib.startsWith("-L"))
-                result += "    link_directories(" + CMakeQuote(lib.mid(2)) + ")\n";
+                result += "    target_link_directories(" + target.Name + " PRIVATE " + CMakeQuote(lib.mid(2)) + ")\n";
             else
-                result += "    target_link_libraries(" + target.Name + " " + CMakeQuote(lib) + ")\n";
+                result += "    target_link_libraries(" + target.Name + " PRIVATE " + CMakeQuote(lib) + ")\n";
         }
         foreach (const QString &rule, block.InstallRules)
             result += "    # qmake INSTALLS entry: " + rule + "\n";
@@ -176,18 +208,11 @@ QString CMakeGenerator::GenerateUIFiles(const BuildTarget &target)
     QString result;
     if (target.UiFiles.isEmpty())
         return result;
+    if (this->Version == CMakeQtVersion_Qt5 || this->Version == CMakeQtVersion_Qt6)
+        return result;
 
     result += "\n# UI files\n";
-    result += "set(" + target.Name + "_UI_FILES";
-    foreach (QString ui, target.UiFiles)
-        result += " \"" + ui + "\"";
-    result += ")\n";
-
-    if (this->Version == CMakeQtVersion_Qt6)
-        result += "qt6_wrap_ui(" + target.Name + "_UI_HEADERS ${" + target.Name + "_UI_FILES})\n";
-    else if (this->Version == CMakeQtVersion_Qt5)
-        result += "qt5_wrap_ui(" + target.Name + "_UI_HEADERS ${" + target.Name + "_UI_FILES})\n";
-    else if (this->Version == CMakeQtVersion_Qt4)
+    if (this->Version == CMakeQtVersion_Qt4)
         result += "qt4_wrap_ui(" + target.Name + "_UI_HEADERS ${" + target.Name + "_UI_FILES})\n";
     else
     {
@@ -206,18 +231,11 @@ QString CMakeGenerator::GenerateResources(const BuildTarget &target)
     QString result;
     if (target.ResourceFiles.isEmpty())
         return result;
+    if (this->Version == CMakeQtVersion_Qt5 || this->Version == CMakeQtVersion_Qt6)
+        return result;
 
     result += "\n# Resource files\n";
-    result += "set(" + target.Name + "_RESOURCE_FILES";
-    foreach (QString qrc, target.ResourceFiles)
-        result += " \"" + qrc + "\"";
-    result += ")\n";
-
-    if (this->Version == CMakeQtVersion_Qt6)
-        result += "qt6_add_resources(" + target.Name + "_RESOURCES ${" + target.Name + "_RESOURCE_FILES})\n";
-    else if (this->Version == CMakeQtVersion_Qt5)
-        result += "qt5_add_resources(" + target.Name + "_RESOURCES ${" + target.Name + "_RESOURCE_FILES})\n";
-    else if (this->Version == CMakeQtVersion_Qt4)
+    if (this->Version == CMakeQtVersion_Qt4)
         result += "qt4_add_resources(" + target.Name + "_RESOURCES ${" + target.Name + "_RESOURCE_FILES})\n";
     else
     {
@@ -267,16 +285,24 @@ QString CMakeGenerator::GenerateConfigOptions(const BuildTarget &target)
 QString CMakeGenerator::GenerateDefines(const BuildTarget &target)
 {
     QString result;
-    foreach (QString define, target.Defines)
-        result += "add_definitions(-D" + define + ")\n";
+    if (target.Defines.isEmpty())
+        return result;
+
+    result += "target_compile_definitions(" + target.Name + " PRIVATE\n";
+    result += CMakeIndentedList(target.Defines);
+    result += ")\n";
     return result;
 }
 
 QString CMakeGenerator::GenerateIncludePaths(const BuildTarget &target)
 {
     QString result;
-    foreach (QString path, target.IncludePaths)
-        result += "include_directories(" + CMakeQuote(path) + ")\n";
+    if (target.IncludePaths.isEmpty())
+        return result;
+
+    result += "target_include_directories(" + target.Name + " PRIVATE\n";
+    result += CMakeIndentedList(target.IncludePaths);
+    result += ")\n";
     return result;
 }
 
@@ -288,16 +314,16 @@ QString CMakeGenerator::GenerateLibraries(const BuildTarget &target)
         QString lib = target.Libraries[i];
         if (lib == "-framework" && i + 1 < target.Libraries.size())
         {
-            result += "target_link_libraries(" + target.Name + " \"-framework " + target.Libraries[i + 1] + "\")\n";
+            result += "target_link_libraries(" + target.Name + " PRIVATE \"-framework " + target.Libraries[i + 1] + "\")\n";
             i++;
             continue;
         }
         if (lib.startsWith("-l"))
-            result += "target_link_libraries(" + target.Name + " " + lib.mid(2) + ")\n";
+            result += "target_link_libraries(" + target.Name + " PRIVATE " + lib.mid(2) + ")\n";
         else if (lib.startsWith("-L"))
-            result += "link_directories(" + CMakeQuote(lib.mid(2)) + ")\n";
+            result += "target_link_directories(" + target.Name + " PRIVATE " + CMakeQuote(lib.mid(2)) + ")\n";
         else
-            result += "target_link_libraries(" + target.Name + " " + CMakeQuote(lib) + ")\n";
+            result += "target_link_libraries(" + target.Name + " PRIVATE " + CMakeQuote(lib) + ")\n";
     }
     return result;
 }
@@ -356,24 +382,42 @@ QString CMakeGenerator::GenerateDefaultQtLibs(const BuildTarget &target)
         result += "ENDIF()\n";
     }
 
-    if (!target.Headers.isEmpty())
+    if (!target.Headers.isEmpty() && this->Version == CMakeQtVersion_Qt4)
     {
-        if (this->Version == CMakeQtVersion_Qt6)
-            result += "qt6_wrap_cpp(" + target.Name + "_HEADERS_MOC ${" + target.Name + "_HEADERS})\n";
-        else if (this->Version == CMakeQtVersion_Qt5)
-            result += "qt5_wrap_cpp(" + target.Name + "_HEADERS_MOC ${" + target.Name + "_HEADERS})\n";
-        else if (this->Version == CMakeQtVersion_Qt4)
-            result += "qt4_wrap_cpp(" + target.Name + "_HEADERS_MOC ${" + target.Name + "_HEADERS})\n";
-        else
-        {
-            result += "IF (QT5BUILD)\n";
-            result += Generic::Indent("qt5_wrap_cpp(" + target.Name + "_HEADERS_MOC ${" + target.Name + "_HEADERS})\n");
-            result += "ELSE()\n";
-            result += Generic::Indent("qt4_wrap_cpp(" + target.Name + "_HEADERS_MOC ${" + target.Name + "_HEADERS})\n");
-            result += "ENDIF()\n";
-        }
+        result += "qt4_wrap_cpp(" + target.Name + "_HEADERS_MOC ${" + target.Name + "_HEADERS})\n";
+    }
+    else if (!target.Headers.isEmpty() && this->Version == CMakeQtVersion_All)
+    {
+        result += "IF (QT5BUILD)\n";
+        result += "ELSE()\n";
+        result += Generic::Indent("qt4_wrap_cpp(" + target.Name + "_HEADERS_MOC ${" + target.Name + "_HEADERS})\n");
+        result += "ENDIF()\n";
     }
 
+    return result;
+}
+
+QString CMakeGenerator::GenerateQtAutomation(const BuildTarget &target)
+{
+    QString result;
+    Q_UNUSED(target);
+
+    if (this->Version == CMakeQtVersion_Qt5 || this->Version == CMakeQtVersion_Qt6)
+    {
+        result += "set(CMAKE_AUTOMOC ON)\n";
+        result += "set(CMAKE_AUTOUIC ON)\n";
+        result += "set(CMAKE_AUTORCC ON)\n";
+    }
+    else if (this->Version == CMakeQtVersion_All)
+    {
+        result += "IF (QT5BUILD)\n";
+        result += Generic::Indent("set(CMAKE_AUTOMOC ON)\n");
+        result += Generic::Indent("set(CMAKE_AUTOUIC ON)\n");
+        result += Generic::Indent("set(CMAKE_AUTORCC ON)\n");
+        result += "ENDIF()\n";
+    }
+    if (!result.isEmpty())
+        result += "\n";
     return result;
 }
 

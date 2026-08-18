@@ -40,10 +40,12 @@ class CMakeGenerator
 
     private:
         QString GenerateOptions(const QList<CMakeOption> &options);
+        QString GenerateFileSet(QString variable, const QList<QString> &files);
         QString GenerateDefaultQtLibs(const BuildTarget &target);
         QString GenerateQt4Libs();
         QString GenerateQt5Libs(const BuildTarget &target);
         QString GenerateQt6Libs(const BuildTarget &target);
+        QString GenerateQtAutomation(const BuildTarget &target);
         QString GenerateQtModules(const BuildTarget &target);
         QString GenerateConfigOptions(const BuildTarget &target);
         QString GenerateDefines(const BuildTarget &target);

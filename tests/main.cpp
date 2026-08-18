@@ -166,13 +166,49 @@ static void TestPhase3QMakeFixture(TestRunner *runner)
     QString cmake = generator.Generate(project, QList<CMakeOption>());
     runner->Expect(cmake.contains("project(phase_three)"), "generated CMake names project");
     runner->Expect(cmake.contains("\"src/main file.cpp\""), "generated CMake quotes source path with spaces");
-    runner->Expect(cmake.contains("include_directories(\"include dir\")"), "generated CMake quotes include path with spaces");
-    runner->Expect(cmake.contains("link_directories(\"lib dir\")"), "generated CMake quotes link directory with spaces");
-    runner->Expect(cmake.contains("target_link_libraries(phase_three \"-framework Cocoa\")"), "generated CMake keeps framework pair");
+    runner->Expect(cmake.contains("target_include_directories(phase_three PRIVATE"), "generated CMake uses target include directories");
+    runner->Expect(cmake.contains("\"include dir\""), "generated CMake quotes include path with spaces");
+    runner->Expect(cmake.contains("target_link_directories(phase_three PRIVATE \"lib dir\")"), "generated CMake quotes link directory with spaces");
+    runner->Expect(cmake.contains("target_link_libraries(phase_three PRIVATE \"-framework Cocoa\")"), "generated CMake keeps framework pair");
     runner->Expect(cmake.contains("set(phase_three_TRANSLATIONS \"i18n/app_en.ts\")"), "generated CMake emits translations");
     runner->Expect(cmake.contains("target_compile_options(phase_three PRIVATE -Wall)"), "generated CMake emits compile options");
     runner->Expect(cmake.contains("target_link_options(phase_three PRIVATE -pthread)"), "generated CMake emits link options");
     runner->Expect(cmake.contains("# q2c warning:"), "generated CMake includes parser warnings");
+}
+
+static void TestPhase5CMakeGeneration(TestRunner *runner)
+{
+    QString fixture = Fixture("qmake/phase3/phase3.pro");
+    BuildProject project;
+    QMakeParser parser;
+    runner->Expect(parser.Parse(ReadFile(fixture), &project, fixture, "VERSION 3.1.0"), "phase5 fixture parses");
+
+    CMakeGenerator qt6_generator(CMakeQtVersion_Qt6);
+    QString qt6 = qt6_generator.Generate(project, QList<CMakeOption>());
+    runner->Expect(qt6.contains("find_package(Qt6 COMPONENTS Core Widgets REQUIRED)"), "Qt6 generator finds selected modules");
+    runner->Expect(qt6.contains("set(CMAKE_AUTOMOC ON)"), "Qt6 generator enables automoc");
+    runner->Expect(qt6.contains("set(CMAKE_AUTOUIC ON)"), "Qt6 generator enables autouic");
+    runner->Expect(qt6.contains("set(CMAKE_AUTORCC ON)"), "Qt6 generator enables autorcc");
+    runner->Expect(qt6.contains("add_executable(phase_three ${phase_three_SOURCES} ${phase_three_HEADERS} ${phase_three_UI_FILES} ${phase_three_RESOURCE_FILES})"), "Qt6 generator attaches all source classes to target");
+    runner->Expect(qt6.contains("target_compile_definitions(phase_three PRIVATE"), "Qt6 generator uses target compile definitions");
+    runner->Expect(qt6.contains("target_include_directories(phase_three PRIVATE"), "Qt6 generator uses target include directories");
+    runner->Expect(qt6.contains("target_link_libraries(phase_three PRIVATE Qt6::Core Qt6::Widgets)"), "Qt6 generator links imported Qt targets");
+    runner->Expect(!qt6.contains("qt6_wrap_cpp"), "Qt6 generator relies on automoc instead of wrap_cpp");
+
+    CMakeGenerator qt5_generator(CMakeQtVersion_Qt5);
+    QString qt5 = qt5_generator.Generate(project, QList<CMakeOption>());
+    runner->Expect(qt5.contains("find_package(Qt5 COMPONENTS Core Widgets REQUIRED)"), "Qt5 generator finds selected modules");
+    runner->Expect(qt5.contains("target_link_libraries(phase_three PRIVATE Qt5::Core Qt5::Widgets)"), "Qt5 generator links imported Qt targets");
+    runner->Expect(qt5.contains("set(CMAKE_AUTOMOC ON)"), "Qt5 generator enables automoc");
+
+    CMakeGenerator qt4_generator(CMakeQtVersion_Qt4);
+    QString qt4 = qt4_generator.Generate(project, QList<CMakeOption>());
+    runner->Expect(qt4.contains("find_package(Qt4 REQUIRED)"), "Qt4 generator finds Qt4");
+    runner->Expect(qt4.contains("include(${QT_USE_FILE})"), "Qt4 generator includes Qt use file");
+    runner->Expect(qt4.contains("qt4_wrap_cpp(phase_three_HEADERS_MOC ${phase_three_HEADERS})"), "Qt4 generator wraps moc headers");
+    runner->Expect(qt4.contains("qt4_wrap_ui(phase_three_UI_HEADERS ${phase_three_UI_FILES})"), "Qt4 generator wraps ui files");
+    runner->Expect(qt4.contains("qt4_add_resources(phase_three_RESOURCES ${phase_three_RESOURCE_FILES})"), "Qt4 generator wraps resources");
+    runner->Expect(!qt4.contains("CMAKE_AUTOMOC ON"), "Qt4 generator does not emit automoc");
 }
 
 static void TestLibraryFixture(TestRunner *runner)
@@ -267,6 +303,7 @@ int main(int argc, char *argv[])
 
     TestRunner runner;
     TestPhase3QMakeFixture(&runner);
+    TestPhase5CMakeGeneration(&runner);
     TestLibraryFixture(&runner);
     TestSubdirsFixture(&runner);
     TestCMakeFixtureParses(&runner);
