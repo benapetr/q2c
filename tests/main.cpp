@@ -11,6 +11,7 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
+#include <QRegularExpression>
 #include <QTextStream>
 #include "buildmodel.h"
 #include "cmakeparser.h"
@@ -91,6 +92,19 @@ static bool ContainsWarning(const BuildProject &project, QString needle)
     return false;
 }
 
+static QString NormalizeGenerated(QString text)
+{
+    text.replace(QRegularExpression("https://github\\.com/benapetr/q2c at [^\\n]+"), "https://github.com/benapetr/q2c at <timestamp>");
+    return text.replace("\r\n", "\n");
+}
+
+static void ExpectSnapshot(TestRunner *runner, QString actual, QString snapshot_fixture, QString message)
+{
+    QString expected = ReadFile(Fixture(snapshot_fixture)).replace("\r\n", "\n");
+    runner->Expect(!expected.isEmpty(), message + " snapshot is readable");
+    runner->Expect(NormalizeGenerated(actual) == expected, message);
+}
+
 static bool HasScopeWithSource(const BuildTarget *target, QString condition, QString source)
 {
     if (target == nullptr)
@@ -110,6 +124,18 @@ static bool HasScopeWithDefine(const BuildTarget *target, QString condition, QSt
     foreach (const BuildConditionalScope &scope, target->ConditionalScopes)
     {
         if (scope.Condition == condition && scope.Defines.contains(define))
+            return true;
+    }
+    return false;
+}
+
+static bool HasScopeWithLibrary(const BuildTarget *target, QString condition, QString library)
+{
+    if (target == nullptr)
+        return false;
+    foreach (const BuildConditionalScope &scope, target->ConditionalScopes)
+    {
+        if (scope.Condition == condition && scope.Libraries.contains(library))
             return true;
     }
     return false;
@@ -176,6 +202,53 @@ static void TestPhase3QMakeFixture(TestRunner *runner)
     runner->Expect(cmake.contains("# q2c warning:"), "generated CMake includes parser warnings");
 }
 
+static void TestComplexQMakeFixture(TestRunner *runner)
+{
+    QString fixture = Fixture("qmake/complex/complex.pro");
+    BuildProject project;
+    QMakeParser parser;
+    runner->Expect(parser.Parse(ReadFile(fixture), &project, fixture, "VERSION 3.16"), "complex qmake fixture parses");
+
+    const BuildTarget *target = project.PrimaryTarget();
+    runner->Expect(target != nullptr, "complex qmake fixture has target");
+    if (target == nullptr)
+        return;
+
+    QString fixture_dir = QFileInfo(fixture).absoluteDir().absolutePath();
+    runner->Expect(project.Name == "complex_app", "complex qmake target name parses");
+    runner->Expect(target->Type == BuildTarget_Test, "complex qmake testcase config maps target type");
+    runner->Expect(Contains(target->QtModules, "core"), "complex qmake keeps core module");
+    runner->Expect(Contains(target->QtModules, "widgets"), "complex qmake keeps widgets module");
+    runner->Expect(Contains(target->QtModules, "network"), "complex qmake keeps network module");
+    runner->Expect(!Contains(target->QtModules, "gui"), "complex qmake removes gui module");
+    runner->Expect(Contains(target->Sources, fixture_dir + "/shared/logger.cpp"), "complex qmake include expands shared source path");
+    runner->Expect(Contains(target->Sources, "src/file with space.cpp"), "complex qmake keeps source path with spaces");
+    runner->Expect(Contains(target->Headers, fixture_dir + "/shared/settings.h"), "complex qmake include expands shared header path");
+    runner->Expect(Contains(target->UiFiles, "ui/preferences.ui"), "complex qmake parses multiple forms");
+    runner->Expect(Contains(target->ResourceFiles, "resources/icons.qrc"), "complex qmake parses multiple resources");
+    runner->Expect(Contains(target->TranslationFiles, "i18n/complex_de.ts"), "complex qmake parses translations");
+    runner->Expect(Contains(target->IncludePaths, fixture_dir + "/generated"), "complex qmake expands generated include path");
+    runner->Expect(Contains(target->IncludePaths, "third party/include"), "complex qmake preserves include path with spaces");
+    runner->Expect(Contains(target->Libraries, "-Lthird party/lib"), "complex qmake preserves quoted library path");
+    runner->Expect(Contains(target->Libraries, "-framework"), "complex qmake parses framework flag");
+    runner->Expect(Contains(target->CompileOptions, "-Wpedantic"), "complex qmake parses compile option list");
+    runner->Expect(Contains(target->InstallRules, "translations"), "complex qmake parses install entries");
+    runner->Expect(HasScopeWithSource(target, "WIN32", "platform/win.cpp"), "complex qmake parses win32 source scope");
+    runner->Expect(HasScopeWithSource(target, "UNIX", "platform/unix.cpp"), "complex qmake parses unix source scope");
+    runner->Expect(HasScopeWithLibrary(target, "APPLE", "Cocoa"), "complex qmake parses mac framework scope");
+    runner->Expect(HasScopeWithDefine(target, "contains(QT, network)", "HAS_NETWORK_MODULE"), "complex qmake keeps contains condition");
+
+    CMakeGenerator generator(CMakeQtVersion_Qt6);
+    QString cmake = generator.Generate(project, QList<CMakeOption>());
+    runner->Expect(cmake.contains("find_package(Qt6 COMPONENTS Core Widgets Network REQUIRED)"), "complex qmake generates Qt6 module discovery");
+    runner->Expect(cmake.contains("\"src/file with space.cpp\""), "complex qmake generated CMake quotes source with spaces");
+    runner->Expect(cmake.contains("target_link_directories(complex_app PRIVATE \"third party/lib\")"), "complex qmake generated CMake keeps shared link directory");
+    runner->Expect(cmake.contains("target_link_libraries(complex_app PRIVATE \"-framework Security\")"), "complex qmake generated CMake keeps framework");
+    runner->Expect(cmake.contains("if(WIN32)"), "complex qmake generated CMake emits win32 scope");
+    runner->Expect(cmake.contains("if(UNIX)"), "complex qmake generated CMake emits unix scope");
+    runner->Expect(cmake.contains("set(complex_app_TRANSLATIONS"), "complex qmake generated CMake emits translations");
+}
+
 static void TestPhase5CMakeGeneration(TestRunner *runner)
 {
     QString fixture = Fixture("qmake/phase3/phase3.pro");
@@ -211,12 +284,52 @@ static void TestPhase5CMakeGeneration(TestRunner *runner)
     runner->Expect(!qt4.contains("CMAKE_AUTOMOC ON"), "Qt4 generator does not emit automoc");
 }
 
+static void TestVersionAndConsoleFixtures(TestRunner *runner)
+{
+    struct VersionCase
+    {
+        QString FixturePath;
+        CMakeQtVersion Version;
+        QString ExpectedFindPackage;
+        QString ExpectedTargetLink;
+        QString Message;
+    };
+
+    QList<VersionCase> cases;
+    cases << VersionCase{"qmake/qt4/qt4_widgets.pro", CMakeQtVersion_Qt4, "find_package(Qt4 REQUIRED)", "include(${QT_USE_FILE})", "Qt4 fixture"};
+    cases << VersionCase{"qmake/qt5/qt5_widgets.pro", CMakeQtVersion_Qt5, "find_package(Qt5 COMPONENTS Core Widgets Network REQUIRED)", "target_link_libraries(qt5_widgets PRIVATE Qt5::Core Qt5::Widgets Qt5::Network)", "Qt5 fixture"};
+    cases << VersionCase{"qmake/qt6/qt6_widgets.pro", CMakeQtVersion_Qt6, "find_package(Qt6 COMPONENTS Core Widgets REQUIRED)", "target_link_libraries(qt6_widgets PRIVATE Qt6::Core Qt6::Widgets)", "Qt6 fixture"};
+
+    foreach (const VersionCase &item, cases)
+    {
+        BuildProject project;
+        QMakeParser parser;
+        QString fixture = Fixture(item.FixturePath);
+        runner->Expect(parser.Parse(ReadFile(fixture), &project, fixture, "VERSION 3.16"), item.Message + " parses");
+        CMakeGenerator generator(item.Version);
+        QString cmake = generator.Generate(project, QList<CMakeOption>());
+        runner->Expect(cmake.contains(item.ExpectedFindPackage), item.Message + " emits expected Qt discovery");
+        runner->Expect(cmake.contains(item.ExpectedTargetLink), item.Message + " emits expected Qt linkage");
+    }
+
+    BuildProject console_project;
+    QMakeParser console_parser;
+    QString console_fixture = Fixture("qmake/console/console.pro");
+    runner->Expect(console_parser.Parse(ReadFile(console_fixture), &console_project, console_fixture, "VERSION 3.16"), "console fixture parses");
+    const BuildTarget *console_target = console_project.PrimaryTarget();
+    runner->Expect(console_target != nullptr && console_target->Type == BuildTarget_Application, "console fixture maps to app target");
+    runner->Expect(console_target != nullptr && Contains(console_target->Config, "console"), "console fixture preserves console config");
+    CMakeGenerator console_generator(CMakeQtVersion_Qt6);
+    QString console_cmake = console_generator.Generate(console_project, QList<CMakeOption>());
+    runner->Expect(console_cmake.contains("add_executable(console_tool ${console_tool_SOURCES})"), "console fixture generates executable");
+}
+
 static void TestLibraryFixture(TestRunner *runner)
 {
     QString fixture = Fixture("qmake/library/library.pro");
     BuildProject project;
     QMakeParser parser;
-    runner->Expect(parser.Parse(ReadFile(fixture), &project, fixture, "VERSION 3.1.0"), "library fixture parses");
+    runner->Expect(parser.Parse(ReadFile(fixture), &project, fixture, "VERSION 3.16.0"), "library fixture parses");
 
     const BuildTarget *target = project.PrimaryTarget();
     runner->Expect(target != nullptr && target->Type == BuildTarget_Library, "TEMPLATE = lib maps to library");
@@ -224,6 +337,7 @@ static void TestLibraryFixture(TestRunner *runner)
     CMakeGenerator generator(CMakeQtVersion_Qt6);
     QString cmake = generator.Generate(project, QList<CMakeOption>());
     runner->Expect(cmake.contains("add_library(libdemo ${libdemo_SOURCES} ${libdemo_HEADERS})"), "library fixture generates add_library");
+    ExpectSnapshot(runner, cmake, "snapshots/library_qt6.cmake.expected", "library Qt6 generated CMake snapshot matches");
 }
 
 static void TestSubdirsFixture(TestRunner *runner)
@@ -274,6 +388,9 @@ static void TestCMakeFixtureParses(TestRunner *runner)
     runner->Expect(Contains(target->Defines, "HAS_CMAKE_FIXTURE"), "target_compile_definitions parses");
     runner->Expect(Contains(target->IncludePaths, "include"), "target_include_directories parses");
     runner->Expect(Contains(target->CompileOptions, "-Wall"), "target_compile_options parses");
+    runner->Expect(Contains(target->CompileOptions, "$<$<CONFIG:Debug>:-DDEBUG_BUILD>"), "target_compile_options keeps generator expression for warning");
+    runner->Expect(Contains(target->Libraries, "-Llib dir"), "target_link_directories parses");
+    runner->Expect(Contains(target->Libraries, "customlib"), "target_link_libraries parses non-Qt library");
     runner->Expect(Contains(target->LinkOptions, "-pthread"), "target_link_options parses");
     runner->Expect(Contains(target->TranslationFiles, "i18n/cmake_fixture.ts"), "qt_add_translations parses");
     runner->Expect(Contains(target->Subdirectories, "plugin"), "add_subdirectory is attached to primary target");
@@ -286,14 +403,118 @@ static void TestCMakeFixtureParses(TestRunner *runner)
     QMakeGenerator generator;
     QString qmake = generator.Generate(project);
     runner->Expect(qmake.contains("TARGET = cmake_fixture"), "generated qmake contains target");
-    runner->Expect(qmake.contains("QT += core widgets"), "generated qmake contains Qt modules");
-    runner->Expect(qmake.contains("SOURCES += main.cpp mainwindow.cpp"), "generated qmake contains sources");
+    runner->Expect(qmake.contains("QT += \\\n    core \\\n    widgets"), "generated qmake contains Qt modules");
+    runner->Expect(qmake.contains("SOURCES += \\\n    main.cpp \\\n    mainwindow.cpp \\\n    extra.cpp"), "generated qmake contains sources");
     runner->Expect(qmake.contains("HEADERS += mainwindow.h"), "generated qmake contains headers");
     runner->Expect(qmake.contains("FORMS += mainwindow.ui"), "generated qmake contains forms");
     runner->Expect(qmake.contains("RESOURCES += resources.qrc"), "generated qmake contains resources");
     runner->Expect(qmake.contains("TRANSLATIONS += i18n/cmake_fixture.ts"), "generated qmake contains translations");
+    runner->Expect(qmake.contains("LIBS += \\\n    \"-Llib dir\" \\\n    customlib"), "generated qmake contains link directories and libraries");
     runner->Expect(qmake.contains("QMAKE_CXXFLAGS += -Wall"), "generated qmake contains compile options");
     runner->Expect(qmake.contains("QMAKE_LFLAGS += -pthread"), "generated qmake contains link options");
+    runner->Expect(qmake.contains("win32 {\n    SOURCES += win.cpp\n}"), "generated qmake maps WIN32 source scope");
+    runner->Expect(qmake.contains("win32 {\n    DEFINES += WIN_ONLY\n}"), "generated qmake maps WIN32 define scope");
+    runner->Expect(qmake.contains("CMake generator expressions require manual qmake review"), "generated qmake warns on generator expressions");
+    runner->Expect(qmake.contains("Additional CMake target 'plugin_module'"), "generated qmake warns on additional target");
+}
+
+static void TestComplexCMakeFixture(TestRunner *runner)
+{
+    QString fixture = Fixture("cmake/complex/CMakeLists.txt");
+    BuildProject project;
+    CMakeParser parser;
+    runner->Expect(parser.Parse(ReadFile(fixture), &project, fixture), "complex CMake fixture parses");
+
+    const BuildTarget *target = project.PrimaryTarget();
+    runner->Expect(target != nullptr, "complex CMake fixture has primary target");
+    if (target == nullptr)
+        return;
+
+    runner->Expect(project.Name == "complex_cmake", "complex CMake project name parses");
+    runner->Expect(project.CMakeMinimumVersion == "VERSION 3.20", "complex CMake minimum version parses");
+    runner->Expect(target->Type == BuildTarget_Application, "complex CMake qt_add_executable maps app target");
+    runner->Expect(Contains(target->Sources, "src/main.cpp"), "complex CMake expands source variable");
+    runner->Expect(Contains(target->Sources, "src/file with space.cpp"), "complex CMake parses quoted source");
+    runner->Expect(Contains(target->Headers, "include/appconfig.h"), "complex CMake expands header variable");
+    runner->Expect(Contains(target->UiFiles, "ui/mainwindow.ui"), "complex CMake classifies ui file");
+    runner->Expect(Contains(target->ResourceFiles, "resources/app.qrc"), "complex CMake classifies qrc file");
+    runner->Expect(Contains(target->Defines, "VERSION=\\\"2.0\\\""), "complex CMake keeps version define");
+    runner->Expect(Contains(target->IncludePaths, "third party/include"), "complex CMake parses include path with spaces");
+    runner->Expect(Contains(target->Libraries, "-Lthird party/lib"), "complex CMake parses link directory");
+    runner->Expect(Contains(target->Libraries, "ssl"), "complex CMake parses ssl library");
+    runner->Expect(Contains(target->CompileOptions, "$<$<CONFIG:Debug>:-DDEBUG_ONLY>"), "complex CMake keeps generator expression option");
+    runner->Expect(Contains(target->TranslationFiles, "i18n/complex_de.ts"), "complex CMake parses translations");
+    runner->Expect(Contains(target->Subdirectories, "plugins"), "complex CMake parses subdirectory");
+    runner->Expect(HasScopeWithSource(target, "WIN32", "platform/win.cpp"), "complex CMake parses WIN32 source scope");
+    runner->Expect(HasScopeWithSource(target, "APPLE", "platform/mac.mm"), "complex CMake parses APPLE source scope");
+    runner->Expect(HasScopeWithLibrary(target, "APPLE", "-framework Cocoa"), "complex CMake parses scoped framework");
+    runner->Expect(HasScopeWithDefine(target, "UNIX", "PLATFORM_UNIX"), "complex CMake parses UNIX define scope");
+
+    QMakeGenerator generator;
+    QString qmake = generator.Generate(project);
+    runner->Expect(qmake.contains("TARGET = complex_cmake"), "complex CMake generated qmake has target");
+    runner->Expect(qmake.contains("QT += \\\n    core \\\n    widgets \\\n    network"), "complex CMake generated qmake has Qt modules");
+    runner->Expect(qmake.contains("\"src/file with space.cpp\""), "complex CMake generated qmake quotes source with spaces");
+    runner->Expect(qmake.contains("LIBS += \\\n    \"-Lthird party/lib\" \\\n    ssl \\\n    crypto"), "complex CMake generated qmake maps libraries");
+    runner->Expect(qmake.contains("macx {\n    SOURCES += platform/mac.mm"), "complex CMake generated qmake maps APPLE scope");
+    runner->Expect(qmake.contains("unix {\n    SOURCES += platform/unix.cpp"), "complex CMake generated qmake maps UNIX scope");
+    runner->Expect(qmake.contains("CMake generator expressions require manual qmake review"), "complex CMake generated qmake warns about generator expression");
+    runner->Expect(qmake.contains("Additional CMake target 'extra_plugin'"), "complex CMake generated qmake warns about module target");
+    ExpectSnapshot(runner, qmake, "snapshots/complex_cmake.pro.expected", "complex CMake generated qmake snapshot matches");
+}
+
+static void TestRoundTrips(TestRunner *runner)
+{
+    QString qmake_fixture = Fixture("qmake/complex/complex.pro");
+    BuildProject qmake_project;
+    QMakeParser qmake_parser;
+    runner->Expect(qmake_parser.Parse(ReadFile(qmake_fixture), &qmake_project, qmake_fixture, "VERSION 3.16"), "round-trip qmake source parses");
+    CMakeGenerator cmake_generator(CMakeQtVersion_Qt6);
+    QString generated_cmake = cmake_generator.Generate(qmake_project, QList<CMakeOption>());
+
+    BuildProject reparsed_cmake;
+    CMakeParser cmake_parser;
+    runner->Expect(cmake_parser.Parse(generated_cmake, &reparsed_cmake, "generated/CMakeLists.txt"), "round-trip generated CMake parses");
+    const BuildTarget *cmake_target = reparsed_cmake.PrimaryTarget();
+    runner->Expect(cmake_target != nullptr && cmake_target->Name == "complex_app", "round-trip CMake keeps target name");
+    runner->Expect(cmake_target != nullptr && Contains(cmake_target->QtModules, "network"), "round-trip CMake keeps Qt module");
+    runner->Expect(cmake_target != nullptr && Contains(cmake_target->Sources, "src/window.cpp"), "round-trip CMake keeps source");
+    runner->Expect(cmake_target != nullptr && Contains(cmake_target->TranslationFiles, "i18n/complex_de.ts"), "round-trip CMake keeps translation");
+
+    QString cmake_fixture = Fixture("cmake/complex/CMakeLists.txt");
+    BuildProject cmake_project;
+    CMakeParser original_cmake_parser;
+    runner->Expect(original_cmake_parser.Parse(ReadFile(cmake_fixture), &cmake_project, cmake_fixture), "round-trip CMake source parses");
+    QMakeGenerator qmake_generator;
+    QString generated_qmake = qmake_generator.Generate(cmake_project);
+
+    BuildProject reparsed_qmake;
+    QMakeParser reparsing_qmake_parser;
+    runner->Expect(reparsing_qmake_parser.Parse(generated_qmake, &reparsed_qmake, "generated/project.pro", "VERSION 3.16"), "round-trip generated qmake parses");
+    const BuildTarget *qmake_target = reparsed_qmake.PrimaryTarget();
+    runner->Expect(qmake_target != nullptr && qmake_target->Name == "complex_cmake", "round-trip qmake keeps target name");
+    runner->Expect(qmake_target != nullptr && Contains(qmake_target->QtModules, "network"), "round-trip qmake keeps Qt module");
+    runner->Expect(qmake_target != nullptr && Contains(qmake_target->Sources, "src/file with space.cpp"), "round-trip qmake keeps quoted source");
+    runner->Expect(qmake_target != nullptr && Contains(qmake_target->Libraries, "-Lthird party/lib"), "round-trip qmake keeps link directory");
+}
+
+static void TestNegativeAndUnsupportedInputs(TestRunner *runner)
+{
+    BuildProject missing_target;
+    QMakeParser qmake_parser;
+    QString missing_target_fixture = Fixture("qmake/negative/missing_target.pro");
+    runner->Expect(!qmake_parser.Parse(ReadFile(missing_target_fixture), &missing_target, missing_target_fixture, "VERSION 3.16"), "negative qmake fixture without target fails");
+
+    BuildProject unsupported_cmake;
+    CMakeParser cmake_parser;
+    QString unsupported_fixture = Fixture("cmake/negative/unsupported.cmake");
+    runner->Expect(cmake_parser.Parse(ReadFile(unsupported_fixture), &unsupported_cmake, unsupported_fixture), "unsupported CMake fixture still parses");
+    runner->Expect(ContainsWarning(unsupported_cmake, "Unsupported CMake command"), "unsupported CMake command emits warning");
+    runner->Expect(ContainsWarning(unsupported_cmake, "set_target_properties"), "unsupported CMake property emits warning");
+
+    QMakeGenerator qmake_generator;
+    QString qmake = qmake_generator.Generate(unsupported_cmake);
+    runner->Expect(qmake.contains("CMake generator expressions require manual qmake review"), "unsupported generator expression emits qmake warning");
 }
 
 int main(int argc, char *argv[])
@@ -303,9 +524,14 @@ int main(int argc, char *argv[])
 
     TestRunner runner;
     TestPhase3QMakeFixture(&runner);
+    TestComplexQMakeFixture(&runner);
     TestPhase5CMakeGeneration(&runner);
+    TestVersionAndConsoleFixtures(&runner);
     TestLibraryFixture(&runner);
     TestSubdirsFixture(&runner);
     TestCMakeFixtureParses(&runner);
+    TestComplexCMakeFixture(&runner);
+    TestRoundTrips(&runner);
+    TestNegativeAndUnsupportedInputs(&runner);
     return runner.Finish();
 }

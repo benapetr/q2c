@@ -1,0 +1,23 @@
+#-----------------------------------------------------------------
+# Project converted from qmake file using q2c
+# https://github.com/benapetr/q2c at <timestamp>
+#-----------------------------------------------------------------
+cmake_minimum_required (VERSION 3.16.0)
+project(libdemo)
+set(libdemo_SOURCES
+    lib.cpp
+)
+set(libdemo_HEADERS
+    lib.h
+)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+find_package(Qt6 COMPONENTS Core REQUIRED)
+
+set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTOUIC ON)
+set(CMAKE_AUTORCC ON)
+
+add_library(libdemo ${libdemo_SOURCES} ${libdemo_HEADERS})
+target_link_libraries(libdemo PRIVATE Qt6::Core)

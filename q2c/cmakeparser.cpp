@@ -261,8 +261,11 @@ void CMakeParser::ProcessCommand(const CMakeCommand &command)
         if (args.isEmpty())
             return;
         QString target_name = args.takeFirst();
-        BuildTarget *target = this->FindOrCreateTarget(target_name, BuildTarget_Library);
+        BuildTargetType target_type = args.contains("MODULE") ? BuildTarget_Plugin : BuildTarget_Library;
+        BuildTarget *target = this->FindOrCreateTarget(target_name, target_type);
         target->Location = BuildSourceLocation(this->SourceFile, command.Line);
+        if (!args.isEmpty() && (args.first() == "STATIC" || args.first() == "SHARED" || args.first() == "MODULE" || args.first() == "OBJECT" || args.first() == "INTERFACE"))
+            args.removeFirst();
         if (!args.isEmpty() && (args.first() == "STATIC" || args.first() == "SHARED" || args.first() == "MODULE" || args.first() == "OBJECT" || args.first() == "INTERFACE"))
             args.removeFirst();
         this->ProcessTargetFiles(target, args);
@@ -344,6 +347,21 @@ void CMakeParser::ProcessCommand(const CMakeCommand &command)
         this->ProcessTargetList(target, &target->LinkOptions, args);
         return;
     }
+    if (name == "target_link_directories")
+    {
+        if (args.isEmpty())
+            return;
+        BuildTarget *target = this->FindOrCreateTarget(args.takeFirst(), BuildTarget_Application);
+        QStringList libraries;
+        foreach (QString arg, args)
+        {
+            if (this->IsVisibilityKeyword(arg))
+                continue;
+            libraries << "-L" + arg;
+        }
+        this->ProcessTargetList(target, &target->Libraries, libraries);
+        return;
+    }
     if (name == "qt_wrap_cpp" || name == "qt5_wrap_cpp" || name == "qt6_wrap_cpp" ||
         name == "qt_add_resources" || name == "qt5_add_resources" || name == "qt6_add_resources")
     {
@@ -359,7 +377,15 @@ void CMakeParser::ProcessCommand(const CMakeCommand &command)
         if (ts_index >= 0)
         {
             for (int i = ts_index + 1; i < args.size(); i++)
-                this->AddUnique(&target->TranslationFiles, args[i]);
+            {
+                QStringList expanded_args;
+                if (args[i].contains("${"))
+                    expanded_args = this->ExpandVariables(args[i]).split(" ", Qt::SkipEmptyParts);
+                else
+                    expanded_args << args[i];
+                foreach (QString arg, expanded_args)
+                    this->AddUnique(&target->TranslationFiles, arg);
+            }
         }
         else
         {
@@ -372,6 +398,8 @@ void CMakeParser::ProcessCommand(const CMakeCommand &command)
         this->AddWarning("set_target_properties is not fully represented at line " + QString::number(command.Line));
         return;
     }
+
+    this->AddWarning("Unsupported CMake command at line " + QString::number(command.Line) + ": " + name);
 }
 
 QString CMakeParser::NormalizeCondition(QStringList args) const

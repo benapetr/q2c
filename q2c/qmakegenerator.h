@@ -12,12 +12,28 @@
 #define QMAKEGENERATOR_H
 
 #include <QString>
+#include <QStringList>
 #include "buildmodel.h"
 
 class QMakeGenerator
 {
     public:
         QString Generate(const BuildProject &project);
+
+    private:
+        QString GenerateTarget(const BuildProject &project, const BuildTarget &target);
+        QString GenerateAssignments(const BuildTarget &target);
+        QString GenerateConditionalScopes(const BuildTarget &target);
+        QString GenerateAdditionalTargetNotes(const BuildProject &project, const BuildTarget &primary);
+        QString Assignment(QString variable, const QList<QString> &items) const;
+        QString ScopedAssignment(QString variable, const QList<QString> &items) const;
+        QString ConfigForTarget(const BuildTarget &target) const;
+        QStringList LibrariesForQmake(const QList<QString> &libraries) const;
+        QStringList CompileOptionsForQmake(const QList<QString> &options) const;
+        QStringList LinkOptionsForQmake(const QList<QString> &options) const;
+        QString MapCondition(QString condition, bool *supported) const;
+        QString Quote(QString value) const;
+        bool HasUnsupportedGeneratorExpression(const QList<QString> &items) const;
 };
 
 #endif // QMAKEGENERATOR_H

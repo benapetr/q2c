@@ -260,6 +260,8 @@ QString CMakeGenerator::GenerateTranslations(const BuildTarget &target)
     foreach (QString translation, target.TranslationFiles)
         result += " \"" + translation + "\"";
     result += ")\n";
+    if (this->Version == CMakeQtVersion_Qt6 || this->Version == CMakeQtVersion_Qt5)
+        result += "qt_add_translations(" + target.Name + " TS_FILES ${" + target.Name + "_TRANSLATIONS})\n";
     return result;
 }
 

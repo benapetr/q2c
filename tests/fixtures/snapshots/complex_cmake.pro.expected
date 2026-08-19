@@ -1,0 +1,61 @@
+#-----------------------------------------------------------------
+# Project converted from cmake file using q2c
+# https://github.com/benapetr/q2c at <timestamp>
+#-----------------------------------------------------------------
+# q2c warning: set_target_properties is not fully represented at line 83
+TARGET = complex_cmake
+TEMPLATE = app
+QT += \
+    core \
+    widgets \
+    network
+DEFINES += \
+    COMPLEX_CMAKE \
+    VERSION=\"2.0\"
+INCLUDEPATH += \
+    include \
+    "third party/include"
+SOURCES += \
+    src/main.cpp \
+    src/window.cpp \
+    src/extra.cpp \
+    "src/file with space.cpp"
+HEADERS += \
+    include/window.h \
+    include/appconfig.h
+FORMS += ui/mainwindow.ui
+RESOURCES += resources/app.qrc
+TRANSLATIONS += \
+    i18n/complex_en.ts \
+    i18n/complex_de.ts
+LIBS += \
+    "-Lthird party/lib" \
+    ssl \
+    crypto
+QMAKE_CXXFLAGS += \
+    -Wall \
+    -Wextra
+QMAKE_LFLAGS += -pthread
+SUBDIRS += plugins
+# q2c warning: CMake generator expressions require manual qmake review.
+win32 {
+    SOURCES += platform/win.cpp
+}
+win32 {
+    DEFINES += PLATFORM_WINDOWS
+}
+macx {
+    SOURCES += platform/mac.mm
+}
+macx {
+    LIBS += "-framework Cocoa"
+}
+unix {
+    SOURCES += platform/unix.cpp
+}
+unix {
+    DEFINES += PLATFORM_UNIX
+}
+
+# q2c warning: Additional CMake target 'extra_plugin' is not emitted as a separate .pro/.pri file yet.
+# Suggested qmake template: lib
