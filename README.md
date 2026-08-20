@@ -1,66 +1,132 @@
-q2c
-===
+# q2c
 
-'''IMPORTANT:''' q2c was never finished nor released. It's a work in progress and most likely not useable in production. Your contributions are welcome.
+q2c is a command-line converter between Qt qmake projects and CMake projects.
+It can convert common `.pro` / `.pri` projects to `CMakeLists.txt`, and it can
+convert common Qt CMake projects back to qmake `.pro` files.
 
-qmake &lt;-> cmake convertor tool
+The project is still under active development. q2c prefers readable generated
+build files and explicit warnings over pretending every qmake or CMake scripting
+feature can be converted perfectly.
 
+## Requirements
 
-How does it work
-=================
+- Qt 5 or Qt 6 development tools
+- A C++17 compiler
+- Either CMake 3.16+ or qmake
 
-This is lightweight tool which allows to convert Qt projects made using qmake to
-cmake and other way (from cmake to qmake). It is cross platform and works only
-in terminal.
+## Build
 
-How to compile
-===============
+Using CMake:
 
-Enter the folder with source code and type `qmake && make`
+```sh
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+```
 
-How to test
-============
+If Qt is not in CMake's default search path, pass its prefix:
 
-The test suite builds a small Qt console test runner that parses real fixture
-projects and checks the generated output.
+```sh
+cmake -S . -B build -DCMAKE_PREFIX_PATH=/path/to/Qt/6.x/gcc_64
+```
 
-    mkdir -p tests/build
-    cd tests/build
-    qmake ../tests.pro
-    make
-    ./q2c_tests
+Using qmake:
 
-The CMake fixture is parsed by the test runner and used to check CMake-to-qmake
-conversion behavior.
+```sh
+mkdir -p release
+cd release
+qmake ../q2c/q2c.pro
+make
+```
 
+## Test
 
-How to install
-===============
-    sudo make install
+Using CMake:
 
-How to use
-===========
+```sh
+cmake -S . -B build -DQ2C_BUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
 
-Enter folder with .pro file and type
+Using qmake:
 
-    q2c
+```sh
+mkdir -p tests/build
+cd tests/build
+qmake ../tests.pro
+make
+./q2c_tests
+```
 
-This will automatically detect input and output file, you can also use
+CLI smoke tests:
 
-    q2c -i test.pro -o test.cmake
+```sh
+tests/run_cli_tests.sh build/q2c
+```
 
-By default q2c detects the conversion direction from the input file name:
+## Install And Package
 
-* `.pro` and `.pri` files are treated as qmake input and converted to CMake.
-* `CMakeLists.txt` and `.cmake` files are treated as CMake input and converted
+Install from a CMake build:
+
+```sh
+cmake --install build
+```
+
+Create release archives:
+
+```sh
+scripts/make_release.sh
+```
+
+The CMake build uses CPack to create `.tar.gz` and `.zip` archives on every
+platform, and DEB/RPM packages on Linux where the tools are available.
+
+## Usage
+
+q2c detects the conversion direction from the input file name:
+
+- `.pro` and `.pri` files are treated as qmake input and converted to CMake.
+- `CMakeLists.txt` and `.cmake` files are treated as CMake input and converted
   to qmake.
+
+Examples:
+
+```sh
+q2c -i app.pro -o CMakeLists.txt
+q2c --qmake-to-cmake --qt6 -i app.pro -o CMakeLists.txt
+q2c --cmake-to-qmake -i CMakeLists.txt -o app.pro
+q2c --check -i app.pro
+q2c --dry-run -i app.pro
+```
+
+Existing output files are not overwritten unless `-f` or `--force` is used.
 
 Useful options:
 
-    q2c --check -i test.pro
-    q2c --dry-run -i test.pro
-    q2c --version
-    q2c --qmake-to-cmake -i test.pro -o CMakeLists.txt
-    q2c --cmake-to-qmake -i CMakeLists.txt -o test.pro
+```text
+--qmake-to-cmake     Force qmake input to CMake output
+--cmake-to-qmake     Force CMake input to qmake output
+--qt4, --qt5, --qt6  Select Qt generation style for qmake-to-CMake
+--check              Parse and validate only
+--dry-run            Print generated output to stdout
+--force              Overwrite an existing output file
+--version            Print the q2c version
+```
 
-Existing output files are not overwritten unless `-f` or `--force` is used.
+## Documentation
+
+- [Conversion Examples](docs/conversion-examples.md)
+- [Supported Feature Matrix](docs/supported-features.md)
+- [Troubleshooting](docs/troubleshooting.md)
+- [Architecture](docs/architecture.md)
+- [Contributing](docs/contributing.md)
+
+## Current Scope
+
+q2c supports a practical static subset of qmake and CMake. It handles typical
+Qt applications, libraries, resources, forms, translations, include paths,
+defines, libraries, compiler/linker flags, subdirs, and simple platform scopes.
+
+It does not execute arbitrary CMake or qmake scripts. Unsupported constructs are
+reported as warnings when possible so the generated file can be reviewed.
+

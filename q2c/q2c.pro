@@ -11,6 +11,7 @@ QT       -= gui
 TARGET = q2c
 CONFIG   += console
 CONFIG   -= app_bundle
+DEFINES += Q2C_VERSION=\\\"0.1.0\\\"
 
 TEMPLATE = app
 

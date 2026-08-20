@@ -16,7 +16,9 @@
 #include "terminalparser.h"
 #include "configuration.h"
 
-static const char *Q2C_VERSION = "0.1.0";
+#ifndef Q2C_VERSION
+#define Q2C_VERSION "0.1.0"
+#endif
 
 static int Parser_Input(TerminalParser *parser, QStringList params)
 {

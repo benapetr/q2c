@@ -28,7 +28,11 @@ cmake_install.cmake
 install_manifest.txt
 compile_commands.json
 _deps/
-*.cmake
+CPackConfig.cmake
+CPackSourceConfig.cmake
+*.tar.gz
+*.tar.xz
+*.zip
 
 # IDE-specific files
 .idea/
