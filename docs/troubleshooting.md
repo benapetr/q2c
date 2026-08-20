@@ -37,6 +37,25 @@ Use `--force` when you intentionally want to replace the output:
 q2c --force -i app.pro -o CMakeLists.txt
 ```
 
+Use `--backup` when you want q2c to preserve the existing file first:
+
+```sh
+q2c --backup -i app.pro -o CMakeLists.txt
+```
+
+Backups are written next to the output file as `.bak`, `.bak.1`, and so on.
+
+## Writing To An Output Directory
+
+Use `--output-dir` to keep generated files separate from the input project:
+
+```sh
+q2c --output-dir converted -i app.pro
+```
+
+If `-o` is also provided, q2c uses the output file name inside the selected
+directory.
+
 ## Direction Detection Fails
 
 q2c infers direction from the input file name. Use an explicit direction for
@@ -59,6 +78,18 @@ Review warning comments in the generated file:
 # q2c warning: set_target_properties is not fully represented at line 83
 ```
 
+Use structured warning output for scripts:
+
+```sh
+q2c --warnings json --check --cmake-to-qmake -i CMakeLists.txt
+```
+
+Use strict mode when warnings should fail validation:
+
+```sh
+q2c --strict --check -i app.pro
+```
+
 ## `--check` Fails On qmake Input
 
 qmake projects currently need enough structure to identify a target, unless the
@@ -77,4 +108,3 @@ Qt-enabled environment.
 The GitHub Actions workflow installs Qt with `jurplel/install-qt-action` and
 then runs both qmake and CMake builds. If local builds behave differently, first
 compare the Qt version, compiler, and build generator.
-

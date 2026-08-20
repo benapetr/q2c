@@ -12,6 +12,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include <QRegularExpression>
 #include <iostream>
 #include "configuration.h"
 #include "project.h"
@@ -19,6 +20,39 @@
 #include "logs.h"
 
 using namespace std;
+
+static QString JsonEscape(QString value)
+{
+    value.replace("\\", "\\\\");
+    value.replace("\"", "\\\"");
+    value.replace("\n", "\\n");
+    value.replace("\r", "\\r");
+    value.replace("\t", "\\t");
+    return value;
+}
+
+static void PrintWarning(QString warning)
+{
+    int line = -1;
+    QRegularExpression line_regex("\\bline\\s+(\\d+)\\b");
+    QRegularExpressionMatch match = line_regex.match(warning);
+    if (match.hasMatch())
+        line = match.captured(1).toInt();
+
+    QString file = Configuration::InputFile;
+    if (Configuration::WarningFormat == "json")
+    {
+        cerr << "{\"type\":\"warning\",\"file\":\"" << JsonEscape(file).toStdString()
+             << "\",\"line\":" << line
+             << ",\"message\":\"" << JsonEscape(warning).toStdString() << "\"}" << endl;
+        return;
+    }
+
+    if (line >= 0)
+        cerr << file.toStdString() << ":" << line << ": warning: " << warning.toStdString() << endl;
+    else
+        cerr << file.toStdString() << ": warning: " << warning.toStdString() << endl;
+}
 
 static bool DetectInput()
 {
@@ -79,26 +113,62 @@ static bool DetectDirection()
 
 static bool ResolveOutputFile()
 {
-    if (!Configuration::OutputFile.isEmpty())
+    if (!Configuration::OutputFile.isEmpty() && Configuration::OutputDirectory.isEmpty())
         return true;
 
-    if (Configuration::q2c)
+    QString output_name = Configuration::OutputFile;
+    if (output_name.isEmpty() && Configuration::q2c)
     {
-        Configuration::OutputFile = "CMakeLists.txt";
-        Logs::DebugLog("Resolved output name to " + Configuration::OutputFile);
-        return true;
+        output_name = "CMakeLists.txt";
+    }
+    else if (output_name.isEmpty())
+    {
+        QFileInfo file_info(Configuration::InputFile);
+        QString base_name = file_info.completeBaseName();
+        if (base_name.isEmpty())
+        {
+            Logs::ErrorLog("Unable to resolve output file name from: " + Configuration::InputFile);
+            return false;
+        }
+        output_name = base_name + ".pro";
     }
 
-    QFileInfo file_info(Configuration::InputFile);
-    QString base_name = file_info.completeBaseName();
-    if (base_name.isEmpty())
+    if (!Configuration::OutputDirectory.isEmpty())
     {
-        Logs::ErrorLog("Unable to resolve output file name from: " + Configuration::InputFile);
+        QDir output_dir(Configuration::OutputDirectory);
+        if (!output_dir.exists() && !output_dir.mkpath("."))
+        {
+            Logs::ErrorLog("Unable to create output directory: " + Configuration::OutputDirectory);
+            return false;
+        }
+        output_name = output_dir.filePath(QFileInfo(output_name).fileName());
+    }
+
+    Configuration::OutputFile = output_name;
+    Logs::DebugLog("Resolved output name to " + Configuration::OutputFile);
+    return true;
+}
+
+static bool BackupExistingOutput(QString output_path)
+{
+    QFile output_file(output_path);
+    if (!output_file.exists())
+        return true;
+
+    QString backup_path = output_path + ".bak";
+    int suffix = 1;
+    while (QFile::exists(backup_path))
+    {
+        backup_path = output_path + ".bak." + QString::number(suffix);
+        suffix++;
+    }
+
+    if (!QFile::copy(output_path, backup_path))
+    {
+        Logs::ErrorLog("Unable to create backup file: " + backup_path);
         return false;
     }
-
-    Configuration::OutputFile = base_name + ".pro";
-    Logs::DebugLog("Resolved output name to " + Configuration::OutputFile);
+    Logs::Log("Backed up existing output to " + backup_path);
     return true;
 }
 
@@ -138,6 +208,10 @@ int main(int argc, char *argv[])
         Logs::ErrorLog("Unable to detect conversion direction from input file: " + Configuration::InputFile);
         return TP_RESULT_FAIL;
     }
+    Logs::DebugLog(QString("Conversion direction: ") + (Configuration::q2c ? "qmake to CMake" : "CMake to qmake"));
+    Logs::DebugLog("Input file: " + Configuration::InputFile, 2);
+    if (!Configuration::OutputDirectory.isEmpty())
+        Logs::DebugLog("Output directory: " + Configuration::OutputDirectory, 2);
 
     // Load the file
     QFile file(Configuration::InputFile);
@@ -157,8 +231,13 @@ int main(int argc, char *argv[])
         return TP_RESULT_FAIL;
     }
     foreach (QString warning, project->GetModel().Warnings)
+        PrintWarning(warning);
+
+    if (Configuration::strict && !project->GetModel().Warnings.isEmpty())
     {
-        Logs::Log("Warning: " + warning);
+        Logs::ErrorLog("Strict mode failed because conversion warnings were emitted");
+        delete project;
+        return TP_RESULT_FAIL;
     }
 
     if (Configuration::check_only)
@@ -191,9 +270,17 @@ int main(int argc, char *argv[])
     }
 
     QFile output_file(Configuration::OutputFile);
-    if ((!Configuration::force) && output_file.exists())
+    if (output_file.exists() && Configuration::backup)
     {
-        Logs::ErrorLog("File " + Configuration::OutputFile + " already exists. Use -f or --force to overwrite it");
+        if (!BackupExistingOutput(Configuration::OutputFile))
+        {
+            delete project;
+            return TP_RESULT_FAIL;
+        }
+    }
+    if ((!Configuration::force) && (!Configuration::backup) && output_file.exists())
+    {
+        Logs::ErrorLog("File " + Configuration::OutputFile + " already exists. Use -f/--force or --backup to overwrite it");
         delete project;
         return TP_RESULT_FAIL;
     }

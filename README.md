@@ -96,7 +96,10 @@ q2c -i app.pro -o CMakeLists.txt
 q2c --qmake-to-cmake --qt6 -i app.pro -o CMakeLists.txt
 q2c --cmake-to-qmake -i CMakeLists.txt -o app.pro
 q2c --check -i app.pro
+q2c --check --strict -i app.pro
 q2c --dry-run -i app.pro
+q2c --backup --force -i app.pro -o CMakeLists.txt
+q2c --output-dir converted -i app.pro
 ```
 
 Existing output files are not overwritten unless `-f` or `--force` is used.
@@ -110,6 +113,10 @@ Useful options:
 --check              Parse and validate only
 --dry-run            Print generated output to stdout
 --force              Overwrite an existing output file
+--backup             Back up an existing output file before overwriting
+--output-dir DIR     Write generated output into DIR
+--strict             Fail when conversion warnings are emitted
+--warnings FORMAT    Warning output format: text or json
 --version            Print the q2c version
 ```
 
@@ -129,4 +136,3 @@ defines, libraries, compiler/linker flags, subdirs, and simple platform scopes.
 
 It does not execute arbitrary CMake or qmake scripts. Unsupported constructs are
 reported as warnings when possible so the generated file can be reviewed.
-

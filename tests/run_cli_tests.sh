@@ -29,6 +29,29 @@ grep -q "TARGET = complex_cmake" "$TMP_DIR/complex.pro"
 grep -q "QT += \\\\" "$TMP_DIR/complex.pro"
 grep -q "CMake generator expressions require manual qmake review" "$TMP_DIR/complex.pro"
 
+if "$Q2C_BINARY" --strict --cmake-to-qmake --check \
+    -i "$ROOT_DIR/tests/fixtures/cmake/complex/CMakeLists.txt" >/dev/null 2>"$TMP_DIR/strict.err"; then
+    echo "strict mode unexpectedly accepted a warning-producing input" >&2
+    exit 1
+fi
+grep -q "Strict mode failed" "$TMP_DIR/strict.err"
+
+"$Q2C_BINARY" --warnings json --cmake-to-qmake --check \
+    -i "$ROOT_DIR/tests/fixtures/cmake/complex/CMakeLists.txt" >/dev/null 2>"$TMP_DIR/warnings.jsonl"
+grep -q '"type":"warning"' "$TMP_DIR/warnings.jsonl"
+grep -q '"line":83' "$TMP_DIR/warnings.jsonl"
+
+mkdir -p "$TMP_DIR/out"
+"$Q2C_BINARY" --qmake-to-cmake --qt6 --output-dir "$TMP_DIR/out" \
+    -i "$ROOT_DIR/tests/fixtures/qmake/library/library.pro"
+test -f "$TMP_DIR/out/CMakeLists.txt"
+
+printf 'old contents\n' > "$TMP_DIR/out/CMakeLists.txt"
+"$Q2C_BINARY" --qmake-to-cmake --qt6 --backup --output-dir "$TMP_DIR/out" \
+    -i "$ROOT_DIR/tests/fixtures/qmake/library/library.pro"
+test -f "$TMP_DIR/out/CMakeLists.txt.bak"
+grep -q "old contents" "$TMP_DIR/out/CMakeLists.txt.bak"
+
 if "$Q2C_BINARY" --qmake-to-cmake --check -i "$ROOT_DIR/tests/fixtures/qmake/negative/missing_target.pro"; then
     echo "missing-target qmake fixture unexpectedly passed --check" >&2
     exit 1
@@ -40,4 +63,3 @@ if "$Q2C_BINARY" --definitely-not-an-option >/dev/null 2>&1; then
 fi
 
 echo "CLI integration tests passed"
-

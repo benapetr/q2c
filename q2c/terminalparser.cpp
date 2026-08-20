@@ -40,6 +40,16 @@ static int Parser_Output(TerminalParser *parser, QStringList params)
     return TP_RESULT_OK;
 }
 
+static int Parser_OutputDirectory(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    if (params.isEmpty())
+        return TP_RESULT_FAIL;
+
+    Configuration::OutputDirectory = params.at(0);
+    return TP_RESULT_OK;
+}
+
 static int Parser_Debug(TerminalParser *parser, QStringList params)
 {
     Q_UNUSED(parser);
@@ -86,6 +96,14 @@ static int Parser_Force(TerminalParser *parser, QStringList params)
     return TP_RESULT_OK;
 }
 
+static int Parser_Backup(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::backup = true;
+    return TP_RESULT_OK;
+}
+
 static int Parser_Verbosity(TerminalParser *parser, QStringList params)
 {
     Q_UNUSED(parser);
@@ -107,6 +125,30 @@ static int Parser_Check(TerminalParser *parser, QStringList params)
     Q_UNUSED(parser);
     Q_UNUSED(params);
     Configuration::check_only = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_Strict(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    Q_UNUSED(params);
+    Configuration::strict = true;
+    return TP_RESULT_OK;
+}
+
+static int Parser_Warnings(TerminalParser *parser, QStringList params)
+{
+    Q_UNUSED(parser);
+    if (params.isEmpty())
+        return TP_RESULT_FAIL;
+
+    QString format = params.at(0).toLower();
+    if (format != "text" && format != "json")
+    {
+        std::cerr << "Invalid warning format: " << format.toStdString() << std::endl;
+        return TP_RESULT_FAIL;
+    }
+    Configuration::WarningFormat = format;
     return TP_RESULT_OK;
 }
 
@@ -195,6 +237,12 @@ static int PrintHelp(TerminalParser *parser, QStringList params)
     }
 
     std::cout << std::endl;
+    std::cout << "Examples:" << std::endl
+              << "  q2c --qmake-to-cmake --qt6 -i app.pro -o CMakeLists.txt" << std::endl
+              << "  q2c --cmake-to-qmake -i CMakeLists.txt -o app.pro" << std::endl
+              << "  q2c --check --strict -i app.pro" << std::endl
+              << "  q2c --backup --force -i app.pro -o CMakeLists.txt" << std::endl
+              << std::endl;
     std::cout << "This software is open source, contribute at http://github.com/benapetr/q2c" << std::endl;
 
     Configuration::exit_after_parse = true;
@@ -212,10 +260,14 @@ TerminalParser::TerminalParser()
     this->Register('5', "qt5", "Generate Qt5 compatible CMake file", 0, (TP_Callback)Parser_Qt5);
     this->Register('6', "qt6", "Generate Qt6 compatible CMake file", 0, (TP_Callback)Parser_Qt6);
     this->Register('f', "force", "Force overwrite of existing files", 0, (TP_Callback)Parser_Force);
+    this->Register(0, "backup", "Back up an existing output file before overwriting it", 0, (TP_Callback)Parser_Backup);
     this->Register('i', "input", "Input file to load", 1, (TP_Callback)Parser_Input);
     this->Register('o', "output", "Output file", 1, (TP_Callback)Parser_Output);
+    this->Register(0, "output-dir", "Directory for generated output files", 1, (TP_Callback)Parser_OutputDirectory);
     this->Register(0, "dry-run", "Print converted output to stdout without writing files", 0, (TP_Callback)Parser_DryRun);
     this->Register(0, "check", "Parse and validate input without writing output", 0, (TP_Callback)Parser_Check);
+    this->Register(0, "strict", "Fail when conversion warnings are emitted", 0, (TP_Callback)Parser_Strict);
+    this->Register(0, "warnings", "Warning output format: text or json", 1, (TP_Callback)Parser_Warnings);
     this->Register(0, "qmake-to-cmake", "Convert qmake input to CMake output", 0, (TP_Callback)Parser_QmakeToCmake);
     this->Register(0, "cmake-to-qmake", "Convert CMake input to qmake output", 0, (TP_Callback)Parser_CmakeToQmake);
 }

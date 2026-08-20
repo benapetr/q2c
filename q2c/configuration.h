@@ -23,9 +23,13 @@ class Configuration
         static int verbosity_level;
         static QString InputFile;
         static QString OutputFile;
+        static QString OutputDirectory;
+        static QString WarningFormat;
         static bool force;      // Single flag for force overwrite
+        static bool backup;     // Back up an existing output file before overwriting it
         static bool dry_run;    // Print generated output to stdout instead of writing it
         static bool check_only; // Parse and validate input without writing output
+        static bool strict;     // Fail when parser warnings are emitted
         static bool exit_after_parse;
         static int exit_code;
         static bool direction_explicit;

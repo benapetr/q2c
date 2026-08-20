@@ -86,6 +86,8 @@ Check an input file without writing output:
 ```sh
 q2c --check -i app.pro
 q2c --check --cmake-to-qmake -i CMakeLists.txt
+q2c --strict --check -i app.pro
+q2c --warnings json --check --cmake-to-qmake -i CMakeLists.txt
 ```
 
 Run the full local validation suite:
@@ -96,4 +98,3 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 tests/run_cli_tests.sh build/q2c
 ```
-
